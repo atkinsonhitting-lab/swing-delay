@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="theme-color" content="#000000"/>
+<title>Swing Delay</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='44' fill='%23e5484d'/%3E%3Ccircle cx='50' cy='50' r='17' fill='white'/%3E%3C/svg%3E"/>
+<style>
+:root{
+  --bg:#000; --panel:#101014; --line:#26262e; --txt:#f5f5f7; --dim:#a1a1aa;
+  --red:#e5484d; --green:#30a46c; --blue:#3e9bff; --amber:#f5a524;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;margin:0;padding:0;}
+body{
+  background:var(--bg); color:var(--txt);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  display:flex; flex-direction:column; max-width:640px; margin:0 auto;
+  height:100%; height:100dvh; overflow:hidden; overscroll-behavior:none;
+  user-select:none; -webkit-user-select:none;
+}
+button{font-family:inherit;}
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px;
+  border-bottom:1px solid var(--line); background:var(--panel);
+}
+.topbar h1{font-size:17px; letter-spacing:2px; margin:0; font-weight:800;}
+.topbar h1 span{color:var(--red);}
+#profileChip{
+  background:#1c1c22; color:var(--txt); border:1px solid var(--line);
+  border-radius:999px; padding:8px 14px; font-size:14px; font-weight:600; max-width:55%;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+#profileChip .bats{color:var(--amber); font-weight:800; margin-left:6px;}
+main{flex:1; display:flex; flex-direction:column; min-height:0; position:relative;}
+#stage{flex:1; position:relative; background:#000; min-height:0;}
+#view{position:absolute; inset:0; width:100%; height:100%; display:block;}
+.overlay{
+  position:absolute; inset:0; display:flex; flex-direction:column; gap:14px;
+  align-items:center; justify-content:center; background:rgba(0,0,0,.72);
+  text-align:center; padding:24px; z-index:5;
+}
+.overlay[hidden]{display:none;}
+.overlay p{color:var(--dim); font-size:14px; line-height:1.5; margin:0; max-width:300px;}
+#startBtn{
+  background:var(--red); color:#fff; border:0; border-radius:16px;
+  font-size:20px; font-weight:800; padding:18px 42px;
+}
+#warmup{font-size:15px; color:var(--dim); letter-spacing:1px;}
+#warmup .dot{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--amber); margin-right:8px; animation:blink 1s infinite;}
+.warmup-inner{font-size:15px; letter-spacing:1px;}
+@keyframes blink{50%{opacity:.2;}}
+#recDot{
+  position:absolute; top:calc(env(safe-area-inset-top,0px) + 12px); left:14px; z-index:4;
+  display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--txt);
+  background:rgba(0,0,0,.55); padding:6px 10px; border-radius:999px;
+}
+#recDot[hidden]{display:none;}
+#recDot i{width:9px; height:9px; border-radius:50%; background:var(--red); animation:blink 1.2s infinite;}
+.controls{background:var(--panel); border-top:1px solid var(--line); padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 12px);}
+.crow{display:flex; align-items:center; gap:10px; margin-bottom:10px;}
+.crow:last-child{margin-bottom:0;}
+.clabel{font-size:13px; color:var(--dim); font-weight:600; min-width:52px;}
+#delayRange{flex:1; accent-color:var(--red); height:32px;}
+#delayVal{font-size:15px; font-weight:800; min-width:44px; text-align:right;}
+.seg{display:flex; background:#1c1c22; border:1px solid var(--line); border-radius:12px; overflow:hidden;}
+.seg button{
+  flex:1; background:transparent; border:0; color:var(--dim);
+  font-size:14px; font-weight:700; padding:11px 0;
+}
+.seg button.on{background:var(--red); color:#fff;}
+.tbtn{
+  background:#1c1c22; color:var(--txt); border:1px solid var(--line);
+  border-radius:12px; font-size:14px; font-weight:700; padding:11px 12px;
+}
+.tbtn.on{border-color:var(--green); color:var(--green);}
+#saveLenBtn{min-width:64px;}
+#saveBtn{
+  flex:1; background:var(--red); color:#fff; border:0; border-radius:14px;
+  font-size:19px; font-weight:800; padding:16px 0; letter-spacing:.5px;
+}
+#saveBtn:active{transform:scale(.98);}
+.navrow{display:flex; gap:10px;}
+.navrow .tbtn{flex:1;}
+section.page{flex:1; display:flex; flex-direction:column; min-height:0; background:var(--bg);}
+section.page[hidden]{display:none;}
+.pagehead{display:flex; align-items:center; justify-content:space-between; padding:14px; border-bottom:1px solid var(--line);}
+.pagehead h2{margin:0; font-size:18px;}
+.scroll{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px 14px 24px;}
+.card{
+  background:var(--panel); border:1px solid var(--line); border-radius:14px;
+  padding:13px 14px; margin-bottom:10px; display:flex; align-items:center; gap:10px;
+}
+.card .nm{flex:1; min-width:0;}
+.card .nm b{display:block; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.card .nm small{color:var(--dim); font-size:12px;}
+.badge{
+  font-size:12px; font-weight:800; border-radius:8px; padding:4px 8px;
+  background:#1c1c22; border:1px solid var(--line); color:var(--amber);
+}
+.card.sel{border-color:var(--red);}
+.mini{
+  background:#1c1c22; color:var(--txt); border:1px solid var(--line);
+  border-radius:10px; font-size:13px; font-weight:700; padding:9px 11px;
+}
+.mini.danger{color:var(--red); border-color:#4a2226;}
+.mini.go{color:var(--green); border-color:#1d4030;}
+.addrow{display:flex; gap:8px; margin-top:6px;}
+.addrow input{
+  flex:1; background:#1c1c22; border:1px solid var(--line); color:var(--txt);
+  border-radius:12px; font-size:16px; padding:12px; font-family:inherit;
+}
+.addrow select{
+  background:#1c1c22; border:1px solid var(--line); color:var(--txt);
+  border-radius:12px; font-size:16px; padding:0 10px; font-family:inherit;
+}
+#addProfileBtn{background:var(--green); color:#fff; border:0; border-radius:12px; font-size:15px; font-weight:800; padding:0 18px;}
+.empty{color:var(--dim); text-align:center; padding:32px 20px; font-size:14px; line-height:1.6;}
+#playerModal{position:fixed; inset:0; background:rgba(0,0,0,.94); z-index:50; display:flex; flex-direction:column;}
+#playerModal[hidden]{display:none;}
+#player{flex:1; width:100%; background:#000; min-height:0;}
+.prow{display:flex; gap:8px; padding:12px 14px calc(env(safe-area-inset-bottom,0px) + 12px);}
+.prow .mini{flex:1; font-size:15px; padding:13px 0;}
+#toast{
+  position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom,0px) + 90px); transform:translateX(-50%) translateY(20px);
+  background:#232329; color:var(--txt); border:1px solid var(--line); border-radius:999px;
+  padding:11px 20px; font-size:14px; font-weight:600; opacity:0; pointer-events:none;
+  transition:opacity .25s, transform .25s; z-index:99; max-width:88%; text-align:center;
+}
+#toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <h1>SWING<span>DELAY</span></h1>
+  <button id="profileChip" type="button">No hitter ▾</button>
+</header>
+
+<main id="viewCamera">
+  <div id="stage">
+    <canvas id="view"></canvas>
+    <div id="recDot" hidden><i></i>REC</div>
+    <div id="warmup" class="overlay" hidden><div class="warmup-inner"><span class="dot"></span>BUFFERING…</div></div>
+    <div id="startOverlay" class="overlay">
+      <button id="startBtn" type="button">Start Camera</button>
+      <p>Point the phone at the cage. The screen replays each swing on a delay so hitters can watch right after they hit.</p>
+    </div>
+  </div>
+  <div class="controls">
+    <div class="crow">
+      <span class="clabel">Delay</span>
+      <input id="delayRange" type="range" min="2" max="15" step="1" value="8"/>
+      <span id="delayVal">8s</span>
+    </div>
+    <div class="crow">
+      <div class="seg" style="flex:1">
+        <button id="modeDelay" type="button" class="on">Delay</button>
+        <button id="modeLive" type="button">Live</button>
+      </div>
+      <button id="camSwitch" type="button" class="tbtn">🤳 Front</button>
+      <button id="mirrorBtn" type="button" class="tbtn">🪞 Mirror: Off</button>
+    </div>
+    <div class="crow">
+      <button id="saveLenBtn" type="button" class="tbtn">⏱ 10s</button>
+      <button id="saveBtn" type="button">● SAVE SWING</button>
+    </div>
+    <div class="crow navrow">
+      <button id="navHitters" type="button" class="tbtn">👥 Hitters</button>
+      <button id="navSwings" type="button" class="tbtn">🎞 Swings</button>
+    </div>
+  </div>
+</main>
+
+<section id="viewProfiles" class="page" hidden>
+  <div class="pagehead"><h2>Hitters</h2><button id="backFromProfiles" type="button" class="mini">← Camera</button></div>
+  <div class="scroll">
+    <div id="profileList"></div>
+    <div class="addrow">
+      <input id="newName" type="text" placeholder="Hitter name" autocomplete="off" maxlength="40"/>
+      <select id="newBats"><option value="R">R</option><option value="L">L</option><option value="S">S</option></select>
+      <button id="addProfileBtn" type="button">Add</button>
+    </div>
+  </div>
+</section>
+
+<section id="viewSwings" class="page" hidden>
+  <div class="pagehead"><h2 id="swingsTitle">Swings</h2><button id="backFromSwings" type="button" class="mini">← Camera</button></div>
+  <div class="scroll"><div id="swingList"></div></div>
+</section>
+
+<div id="playerModal" hidden>
+  <video id="player" controls playsinline preload="metadata"></video>
+  <div class="prow">
+    <button id="shareSwingBtn" type="button" class="mini go">Share</button>
+    <button id="dlSwingBtn" type="button" class="mini">Download</button>
+    <button id="delSwingBtn" type="button" class="mini danger">Delete</button>
+    <button id="closePlayerBtn" type="button" class="mini">Close</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+<video id="src" muted playsinline style="display:none"></video>
+
+<script>
+'use strict';
+/* ================= helpers ================= */
+const $ = (id) => document.getElementById(id);
+function toast(msg){
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+function fmtDate(ts){
+  const d = new Date(ts);
+  return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' +
+         d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+}
+function fileStamp(ts){
+  const d = new Date(ts), p = (n) => String(n).padStart(2,'0');
+  return d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
+}
+function safeName(s){ return ((s || 'hitter').replace(/[^\w\-]+/g,'').slice(0,24)) || 'hitter'; }
+
+/* ================= prefs ================= */
+const DEFAULT_PREFS = { delay:8, mode:'delay', saveLen:10, facing:'user', flip:{user:false,environment:false}, profileId:null };
+let prefs = Object.assign({}, DEFAULT_PREFS);
+try {
+  const raw = localStorage.getItem('swingdelay-prefs');
+  if (raw) prefs = Object.assign({}, DEFAULT_PREFS, JSON.parse(raw));
+} catch(e){}
+if (!prefs.flip || typeof prefs.flip !== 'object') prefs.flip = {user:false, environment:false};
+function savePrefs(){ try { localStorage.setItem('swingdelay-prefs', JSON.stringify(prefs)); } catch(e){} }
+function flipOn(){ return !!(prefs.flip && prefs.flip[prefs.facing]); }
+
+/* ================= IndexedDB ================= */
+let db = null;
+function openDB(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('swing-delay-db', 1);
+    req.onupgradeneeded = (e) => {
+      const d = e.target.result;
+      d.createObjectStore('profiles', {keyPath:'id', autoIncrement:true});
+      const s = d.createObjectStore('swings', {keyPath:'id', autoIncrement:true});
+      s.createIndex('byProfile', 'profileId', {unique:false});
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function idb(store, mode, fn){
+  return new Promise((resolve, reject) => {
+    let req;
+    try { req = fn(db.transaction(store, mode).objectStore(store)); }
+    catch(err){ reject(err); return; }
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+const Profiles = {
+  all: () => idb('profiles','readonly',(s) => s.getAll()),
+  add: (p) => idb('profiles','readwrite',(s) => s.add(p)),
+  del: (id) => idb('profiles','readwrite',(s) => s.delete(id))
+};
+const Swings = {
+  byProfile: (pid) => idb('swings','readonly',(s) => s.index('byProfile').getAll(pid)),
+  get: (id) => idb('swings','readonly',(s) => s.get(id)),
+  add: (sw) => idb('swings','readwrite',(s) => s.add(sw)),
+  del: (id) => idb('swings','readwrite',(s) => s.delete(id))
+};
+
+/* ================= camera + delay engine ================= */
+const src = $('src'), view = $('view'), vctx = view.getContext('2d');
+const capCanvas = document.createElement('canvas');   // small frames for the delay buffer
+const recCanvas = document.createElement('canvas');   // full-res frames for recording
+let stream = null, camReady = false, capTimer = null, rafId = 0;
+let frameBuf = [];              // [{url, t}] newest last
+let shownUrl = null, shownImg = null;
+let recorder = null, chunks = [], initChunk = null, recMime = '', recExt = 'mp4';
+const MAX_BUF_MS = 19000;       // keep 19s so the delay slider (max 15s) always has coverage
+
+function drawCorrected(ctx, w, h, flip){
+  const vw = src.videoWidth, vh = src.videoHeight;
+  if (!vw || !vh || src.readyState < 2) return false;
+  const s = Math.max(w/vw, h/vh), dw = vw*s, dh = vh*s;
+  const dx = (w-dw)/2, dy = (h-dh)/2;
+  ctx.save();
+  if (flip){ ctx.translate(w, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(src, dx, dy, dw, dh);
+  ctx.restore();
+  return true;
+}
+function drawCover(ctx, img, cw, ch){
+  const vw = img.videoWidth || img.naturalWidth, vh = img.videoHeight || img.naturalHeight;
+  if (!vw || !vh) return;
+  const s = Math.max(cw/vw, ch/vh), dw = vw*s, dh = vh*s;
+  ctx.drawImage(img, (cw-dw)/2, (ch-dh)/2, dw, dh);
+}
+function captureFrame(){
+  if (!camReady || src.readyState < 2) return;
+  const vw = src.videoWidth, vh = src.videoHeight;
+  if (!vw || !vh) return;
+  const W = 640, H = Math.round(W * vh / vw);
+  if (capCanvas.width !== W || capCanvas.height !== H){ capCanvas.width = W; capCanvas.height = H; }
+  if (!drawCorrected(capCanvas.getContext('2d'), W, H, flipOn())) return;
+  const t = performance.now();
+  try {
+    capCanvas.toBlob((b) => {
+      if (!b) return;
+      const url = URL.createObjectURL(b);
+      frameBuf.push({url:url, t:t});
+      pruneFrames();
+    }, 'image/jpeg', 0.72);
+  } catch(e){}
+}
+function pruneFrames(){
+  const cutoff = performance.now() - MAX_BUF_MS;
+  while (frameBuf.length && frameBuf[0].t < cutoff){
+    const f = frameBuf.shift();
+    if (f.url !== shownUrl){ try { URL.revokeObjectURL(f.url); } catch(e){} }
+  }
+}
+function drawLoop(){
+  rafId = requestAnimationFrame(drawLoop);
+  if (!camReady || src.readyState < 2) return;
+  const cw = view.width, ch = view.height;
+  if (!cw || !ch) return;
+  vctx.fillStyle = '#000';
+  vctx.fillRect(0, 0, cw, ch);
+  const flip = flipOn();
+  if (prefs.mode === 'live'){
+    // live preview goes through the corrected path too, so the mirror toggle is honored
+    if (!drawCorrected(vctx, cw, ch, flip)) drawCover(vctx, src, cw, ch);
+    $('warmup').hidden = true;
+  } else {
+    const target = performance.now() - prefs.delay*1000;
+    let f = null;
+    for (let i = frameBuf.length-1; i >= 0; i--){ if (frameBuf[i].t <= target){ f = frameBuf[i]; break; } }
+    if (!f && frameBuf.length) f = frameBuf[0];
+    if (f){
+      if (f.url !== shownUrl){
+        shownUrl = f.url;
+        shownImg = new Image();
+        shownImg.src = f.url;
+      }
+      if (shownImg && shownImg.complete && shownImg.naturalWidth) drawCover(vctx, shownImg, cw, ch);
+      const span = frameBuf.length ? (performance.now() - frameBuf[0].t) : 0;
+      $('warmup').hidden = span >= prefs.delay*1000;
+    } else {
+      $('warmup').hidden = false;
+    }
+  }
+  // background recording canvas (corrected, full res)
+  const vw = src.videoWidth, vh = src.videoHeight;
+  if (vw && vh){
+    const RW = 1280, RH = Math.round(RW * vh / vw);
+    if (recCanvas.width !== RW || recCanvas.height !== RH){ recCanvas.width = RW; recCanvas.height = RH; }
+    drawCorrected(recCanvas.getContext('2d'), RW, RH, flip);
+  }
+}
+function pickMime(){
+  if (!window.MediaRecorder) return '';
+  const cands = ['video/mp4;codecs="avc1.42E01E,mp4a.40.2"','video/mp4','video/webm;codecs=vp9','video/webm'];
+  for (const m of cands){ try { if (MediaRecorder.isTypeSupported(m)) return m; } catch(e){} }
+  return '';
+}
+function startRecorder(){
+  stopRecorder();
+  recMime = pickMime();
+  if (!recMime){ toast('This browser cannot record video.'); return; }
+  recExt = recMime.indexOf('mp4') >= 0 ? 'mp4' : 'webm';
+  chunks = []; initChunk = null;
+  let rs = null;
+  try { rs = recCanvas.captureStream(30); } catch(e){ toast('Recording is not supported here.'); return; }
+  try {
+    recorder = new MediaRecorder(rs, {mimeType: recMime, videoBitsPerSecond: 6000000});
+  } catch(e){ toast('Recorder failed to start.'); return; }
+  recorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0){
+      if (!initChunk) initChunk = e.data;
+      chunks.push({blob:e.data, t:Date.now()});
+      const cut = Date.now() - 150000;
+      while (chunks.length && chunks[0].t < cut) chunks.shift();
+    }
+  };
+  recorder.onerror = () => toast('Recording error.');
+  try { recorder.start(1000); } catch(e){}
+}
+function stopRecorder(){
+  if (recorder && recorder.state !== 'inactive'){ try { recorder.stop(); } catch(e){} }
+  recorder = null;
+}
+async function startCamera(){
+  stopCamera();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    toast('Camera is not available in this browser.');
+    return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {facingMode: prefs.facing, width:{ideal:1280}, height:{ideal:720}},
+      audio: false
+    });
+  } catch(err){
+    toast('Camera blocked — allow camera access, then tap Start Camera.');
+    return;
+  }
+  src.srcObject = stream;
+  try { await src.play(); } catch(e){}
+  camReady = true;
+  $('startOverlay').hidden = true;
+  $('recDot').hidden = false;
+  frameBuf.forEach((f) => { try { URL.revokeObjectURL(f.url); } catch(e){} });
+  frameBuf = []; shownUrl = null; shownImg = null;
+  fitCanvas();
+  capTimer = setInterval(captureFrame, 66);
+  cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(drawLoop);
+  startRecorder();
+}
+function stopCamera(){
+  camReady = false;
+  if (capTimer){ clearInterval(capTimer); capTimer = null; }
+  cancelAnimationFrame(rafId);
+  stopRecorder();
+  if (stream){ stream.getTracks().forEach((t) => { try { t.stop(); } catch(e){} }); stream = null; }
+  src.srcObject = null;
+  frameBuf.forEach((f) => { try { URL.revokeObjectURL(f.url); } catch(e){} });
+  frameBuf = []; shownUrl = null; shownImg = null;
+  $('startOverlay').hidden = false;
+  $('warmup').hidden = true;
+  $('recDot').hidden = true;
+}
+
+/* ================= save swing ================= */
+async function saveSwing(){
+  if (!prefs.profileId){ toast('Pick a hitter first.'); showView('profiles'); return; }
+  if (!recorder || !initChunk || chunks.length < 2){ toast('Still rolling — try again in a few seconds.'); return; }
+  const cutoff = Date.now() - prefs.saveLen*1000;
+  const segs = chunks.filter((c) => c.blob !== initChunk && c.t >= cutoff).map((c) => c.blob);
+  if (!segs.length){ toast('Not enough video buffered yet.'); return; }
+  const blob = new Blob([initChunk].concat(segs), {type: recMime});
+  try {
+    await Swings.add({profileId: prefs.profileId, ts: Date.now(), dur: prefs.saveLen, mime: recMime, blob: blob});
+  } catch(e){ toast('Save failed — storage may be full.'); return; }
+  const p = await getProfile(prefs.profileId);
+  toast('Saved to ' + (p ? p.name : 'hitter'));
+  if (!$('viewSwings').hidden) renderSwings();
+}
+async function getProfile(id){
+  const all = await Profiles.all();
+  for (const p of all) if (p.id === id) return p;
+  return null;
+}
+
+/* ================= views ================= */
+const VIEWS = ['viewCamera','viewProfiles','viewSwings'];
+function showView(id){
+  VIEWS.forEach((v) => { $(v).hidden = (v !== id); });
+  if (id === 'viewProfiles') renderProfiles();
+  if (id === 'viewSwings') renderSwings();
+  if (id === 'viewCamera') fitCanvas();
+}
+function fitCanvas(){
+  const r = $('stage').getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  if (view.width !== w || view.height !== h){ view.width = w; view.height = h; }
+}
+
+/* ================= profiles UI ================= */
+async function refreshChip(){
+  const p = prefs.profileId ? await getProfile(prefs.profileId) : null;
+  $('profileChip').innerHTML = p ? (escapeHtml(p.name) + '<span class="bats">' + escapeHtml(p.bats||'') + '</span> ▾') : 'No hitter ▾';
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function renderProfiles(){
+  const list = $('profileList');
+  const profiles = await Profiles.all();
+  profiles.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  if (!profiles.length){ list.innerHTML = '<div class="empty">No hitters yet.<br/>Add your first hitter below.</div>'; return; }
+  const counts = {};
+  for (const p of profiles){
+    try { counts[p.id] = (await Swings.byProfile(p.id)).length; } catch(e){ counts[p.id] = 0; }
+  }
+  list.innerHTML = '';
+  profiles.forEach((p) => {
+    const card = document.createElement('div');
+    card.className = 'card' + (p.id === prefs.profileId ? ' sel' : '');
+    const nm = document.createElement('div'); nm.className = 'nm';
+    const b = document.createElement('b'); b.textContent = p.name;
+    const sm = document.createElement('small'); sm.textContent = (counts[p.id]||0) + ' saved swings';
+    nm.appendChild(b); nm.appendChild(sm);
+    const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = p.bats || '';
+    const sel = document.createElement('button'); sel.type='button'; sel.className='mini go'; sel.textContent='Select';
+    sel.onclick = async () => { prefs.profileId = p.id; savePrefs(); await refreshChip(); await renderProfiles(); toast(p.name + ' selected'); };
+    const vw = document.createElement('button'); vw.type='button'; vw.className='mini'; vw.textContent='Swings';
+    vw.onclick = async () => { prefs.profileId = p.id; savePrefs(); await refreshChip(); showView('swings'); };
+    const del = document.createElement('button'); del.type='button'; del.className='mini danger'; del.textContent='✕';
+    del.onclick = async () => {
+      if (!confirm('Delete ' + p.name + ' and all saved swings?')) return;
+      const sws = await Swings.byProfile(p.id);
+      for (const s of sws){ try { await Swings.del(s.id); } catch(e){} }
+      await Profiles.del(p.id);
+      if (prefs.profileId === p.id){ prefs.profileId = null; savePrefs(); await refreshChip(); }
+      await renderProfiles();
+    };
+    card.appendChild(nm); card.appendChild(badge); card.appendChild(sel); card.appendChild(vw); card.appendChild(del);
+    list.appendChild(card);
+  });
+}
+async function renderSwings(){
+  const list = $('swingList');
+  const p = prefs.profileId ? await getProfile(prefs.profileId) : null;
+  $('swingsTitle').textContent = p ? ('Swings — ' + p.name) : 'Swings';
+  if (!p){ list.innerHTML = '<div class="empty">Pick a hitter first.</div>'; return; }
+  let sws = [];
+  try { sws = await Swings.byProfile(p.id); } catch(e){}
+  sws.sort((a,b) => b.ts - a.ts);
+  if (!sws.length){ list.innerHTML = '<div class="empty">No saved swings for ' + escapeHtml(p.name) + ' yet.<br/>Hit ● SAVE SWING on the camera screen after a swing.</div>'; return; }
+  list.innerHTML = '';
+  sws.forEach((s) => {
+    const card = document.createElement('div'); card.className = 'card';
+    const nm = document.createElement('div'); nm.className = 'nm';
+    const b = document.createElement('b'); b.textContent = fmtDate(s.ts);
+    const sm = document.createElement('small'); sm.textContent = 'last ' + (s.dur || '?') + 's • ' + ((s.mime||'').indexOf('mp4') >= 0 ? 'mp4' : 'webm');
+    nm.appendChild(b); nm.appendChild(sm);
+    const play = document.createElement('button'); play.type='button'; play.className='mini go'; play.textContent='Play';
+    play.onclick = () => openPlayer(s.id);
+    const dl = document.createElement('button'); dl.type='button'; dl.className='mini'; dl.textContent='⤓';
+    dl.onclick = () => downloadSwing(s.id);
+    const del = document.createElement('button'); del.type='button'; del.className='mini danger'; del.textContent='✕';
+    del.onclick = async () => { if (!confirm('Delete this swing?')) return; await Swings.del(s.id); await renderSwings(); };
+    card.appendChild(nm); card.appendChild(play); card.appendChild(dl); card.appendChild(del);
+    list.appendChild(card);
+  });
+}
+
+/* ================= player modal ================= */
+let playerSwingId = null, playerUrl = null;
+async function openPlayer(id){
+  const s = await Swings.get(id);
+  if (!s){ toast('Swing not found.'); return; }
+  playerSwingId = id;
+  if (playerUrl){ try { URL.revokeObjectURL(playerUrl); } catch(e){} }
+  playerUrl = URL.createObjectURL(s.blob);
+  const v = $('player');
+  v.src = playerUrl;
+  $('playerModal').hidden = false;
+  try { await v.play(); } catch(e){}
+}
+function closePlayer(){
+  const v = $('player');
+  try { v.pause(); } catch(e){}
+  v.removeAttribute('src'); v.load();
+  if (playerUrl){ try { URL.revokeObjectURL(playerUrl); } catch(e){} playerUrl = null; }
+  playerSwingId = null;
+  $('playerModal').hidden = true;
+}
+async function swingFile(id){
+  const s = await Swings.get(id);
+  if (!s) return null;
+  const p = await getProfile(s.profileId);
+  const ext = (s.mime && s.mime.indexOf('mp4') >= 0) ? 'mp4' : 'webm';
+  const fname = 'Swing-' + safeName(p ? p.name : 'hitter') + '-' + fileStamp(s.ts) + '.' + ext;
+  return {blob: s.blob, mime: s.mime || 'video/mp4', fname: fname};
+}
+async function downloadSwing(id){
+  const f = await swingFile(id);
+  if (!f){ toast('Swing not found.'); return; }
+  const url = URL.createObjectURL(f.blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = f.fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => { try { URL.revokeObjectURL(url); } catch(e){} }, 8000);
+  toast('Downloading…');
+}
+async function shareSwing(id){
+  const f = await swingFile(id);
+  if (!f){ toast('Swing not found.'); return; }
+  try {
+    const file = new File([f.blob], f.fname, {type: f.mime});
+    if (navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:'Swing video'});
+      return;
+    }
+  } catch(e){ /* user cancelled or share failed */ return; }
+  toast('Sharing is not supported here — use Download.');
+}
+
+/* ================= wiring ================= */
+function syncControls(){
+  $('delayRange').value = prefs.delay;
+  $('delayVal').textContent = prefs.delay + 's';
+  $('modeDelay').classList.toggle('on', prefs.mode === 'delay');
+  $('modeLive').classList.toggle('on', prefs.mode === 'live');
+  $('camSwitch').textContent = prefs.facing === 'user' ? '🤳 Front' : '📷 Back';
+  $('mirrorBtn').textContent = '🪞 Mirror: ' + (flipOn() ? 'On' : 'Off');
+  $('mirrorBtn').classList.toggle('on', flipOn());
+  $('saveLenBtn').textContent = '⏱ ' + prefs.saveLen + 's';
+  $('saveBtn').textContent = '● SAVE LAST ' + prefs.saveLen + 's';
+}
+async function init(){
+  try { db = await openDB(); }
+  catch(e){ toast('Storage unavailable — profiles and swings will not save.'); }
+  syncControls();
+  await refreshChip();
+  $('delayRange').addEventListener('input', (e) => { prefs.delay = parseInt(e.target.value,10) || 8; savePrefs(); syncControls(); });
+  $('modeDelay').onclick = () => { prefs.mode = 'delay'; savePrefs(); syncControls(); };
+  $('modeLive').onclick = () => { prefs.mode = 'live'; savePrefs(); syncControls(); };
+  $('camSwitch').onclick = async () => {
+    prefs.facing = prefs.facing === 'user' ? 'environment' : 'user';
+    savePrefs(); syncControls();
+    if (camReady) await startCamera();
+    toast(prefs.facing === 'user' ? 'Front camera' : 'Back camera');
+  };
+  $('mirrorBtn').onclick = () => {
+    prefs.flip[prefs.facing] = !flipOn();
+    savePrefs(); syncControls();
+    toast(flipOn() ? 'Mirror on — image flipped' : 'Mirror off — true orientation');
+  };
+  const lens = [5,10,15];
+  $('saveLenBtn').onclick = () => {
+    const i = lens.indexOf(prefs.saveLen);
+    prefs.saveLen = lens[(i+1) % lens.length];
+    savePrefs(); syncControls();
+  };
+  $('startBtn').onclick = startCamera;
+  $('saveBtn').onclick = saveSwing;
+  $('profileChip').onclick = () => showView('profiles');
+  $('navHitters').onclick = () => showView('profiles');
+  $('navSwings').onclick = () => showView('swings');
+  $('backFromProfiles').onclick = () => showView('camera');
+  $('backFromSwings').onclick = () => showView('camera');
+  $('addProfileBtn').onclick = async () => {
+    const name = $('newName').value.trim();
+    if (!name){ toast('Type a hitter name first.'); return; }
+    const bats = $('newBats').value;
+    const id = await Profiles.add({name:name, bats:bats, ts:Date.now()});
+    $('newName').value = '';
+    prefs.profileId = id; savePrefs();
+    await refreshChip(); await renderProfiles();
+    toast(name + ' added');
+  };
+  $('newName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addProfileBtn').click(); });
+  $('closePlayerBtn').onclick = closePlayer;
+  $('dlSwingBtn').onclick = () => { if (playerSwingId) downloadSwing(playerSwingId); };
+  $('shareSwingBtn').onclick = () => { if (playerSwingId) shareSwing(playerSwingId); };
+  $('delSwingBtn').onclick = async () => {
+    if (!playerSwingId) return;
+    if (!confirm('Delete this swing?')) return;
+    await Swings.del(playerSwingId);
+    closePlayer(); await renderSwings();
+  };
+  window.addEventListener('resize', fitCanvas);
+  window.addEventListener('orientationchange', () => setTimeout(fitCanvas, 300));
+  document.addEventListener('pagehide', stopCamera);
+  fitCanvas();
+  showView('camera');
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

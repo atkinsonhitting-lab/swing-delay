@@ -347,8 +347,11 @@ function drawLoop(){
     if (f){
       if (f.url !== shownUrl){
         shownUrl = f.url;
-        shownImg = new Image();
-        shownImg.src = f.url;
+        // Keep showing the last decoded frame until the new one finishes
+        // decoding — swapping immediately caused black flicker between frames.
+        const img = new Image();
+        img.onload = () => { shownImg = img; };
+        img.src = f.url;
       }
       if (shownImg && shownImg.complete && shownImg.naturalWidth) drawCover(vctx, shownImg, cw, ch);
       const span = frameBuf.length ? (performance.now() - frameBuf[0].t) : 0;
@@ -420,7 +423,7 @@ async function startCamera(){
   frameBuf.forEach((f) => { try { URL.revokeObjectURL(f.url); } catch(e){} });
   frameBuf = []; shownUrl = null; shownImg = null;
   fitCanvas();
-  capTimer = setInterval(captureFrame, 66);
+  capTimer = setInterval(captureFrame, 100);
   cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(drawLoop);
   startRecorder();

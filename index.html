@@ -170,6 +170,10 @@ section.page[hidden]{display:none;}
       <button id="saveLenBtn" type="button" class="tbtn">⏱ 10s</button>
       <button id="saveBtn" type="button">● SAVE SWING</button>
     </div>
+    <div class="crow">
+      <button id="autoClipBtn" type="button" class="tbtn" style="flex:1">✂️ Auto-clip: On</button>
+      <button id="sensBtn" type="button" class="tbtn">Sensitivity: Med</button>
+    </div>
     <div class="crow navrow">
       <button id="navHitters" type="button" class="tbtn">👥 Hitters</button>
       <button id="navSwings" type="button" class="tbtn">🎞 Swings</button>
@@ -230,7 +234,7 @@ function fileStamp(ts){
 function safeName(s){ return ((s || 'hitter').replace(/[^\w\-]+/g,'').slice(0,24)) || 'hitter'; }
 
 /* ================= prefs ================= */
-const DEFAULT_PREFS = { delay:8, mode:'delay', saveLen:10, facing:'user', flip:{user:false,environment:false}, profileId:null };
+const DEFAULT_PREFS = { delay:8, mode:'delay', saveLen:10, facing:'user', flip:{user:false,environment:false}, profileId:null, autoClip:true, sens:'med' };
 let prefs = Object.assign({}, DEFAULT_PREFS);
 try {
   const raw = localStorage.getItem('swingdelay-prefs');
@@ -281,10 +285,10 @@ const src = $('src'), view = $('view'), vctx = view.getContext('2d');
 const capCanvas = document.createElement('canvas');   // small frames for the delay buffer
 const recCanvas = document.createElement('canvas');   // full-res frames for recording
 let stream = null, camReady = false, capTimer = null, rafId = 0;
-let frameBuf = [];              // [{url, t}] newest last
-let shownUrl = null, shownImg = null;
+let frameBuf = [];              // [{bm: ImageBitmap, t}] newest last (t = performance.now())
 let recorder = null, chunks = [], initChunk = null, recMime = '', recExt = 'mp4';
-const MAX_BUF_MS = 19000;       // keep 19s so the delay slider (max 15s) always has coverage
+const MAX_BUF_MS = 17500;       // covers the 15s max delay + margin
+let recTick = 0;
 
 function drawCorrected(ctx, w, h, flip){
   const vw = src.videoWidth, vh = src.videoHeight;
@@ -298,34 +302,98 @@ function drawCorrected(ctx, w, h, flip){
   return true;
 }
 function drawCover(ctx, img, cw, ch){
-  const vw = img.videoWidth || img.naturalWidth, vh = img.videoHeight || img.naturalHeight;
+  const vw = img.width || img.videoWidth || img.naturalWidth, vh = img.height || img.videoHeight || img.naturalHeight;
   if (!vw || !vh) return;
   const s = Math.max(cw/vw, ch/vh), dw = vw*s, dh = vh*s;
   ctx.drawImage(img, (cw-dw)/2, (ch-dh)/2, dw, dh);
 }
+/* ================= swing auto-detection =================
+   Watches the motion level of the captured frames. A swing shows up as a
+   burst of strong motion; when it settles, the clip [start-1.2s, end+0.6s]
+   is saved automatically under the selected hitter. */
+const MOTION_W = 48, MOTION_H = 27;
+const motionCanvas = document.createElement('canvas');
+motionCanvas.width = MOTION_W; motionCanvas.height = MOTION_H;
+const motionCtx = motionCanvas.getContext('2d', {willReadFrequently:true});
+let prevMotion = null, consecHigh = 0, consecLow = 0;
+let swingState = 'idle', swingStartWall = 0, lastClipAt = 0;
+const SENS = {
+  low:  {start:0.16, end:0.050, label:'Low'},
+  med:  {start:0.10, end:0.040, label:'Med'},
+  high: {start:0.06, end:0.030, label:'High'}
+};
+function resetSwingDetect(){ swingState = 'idle'; consecHigh = 0; consecLow = 0; prevMotion = null; }
+function motionScore(){
+  motionCtx.drawImage(capCanvas, 0, 0, MOTION_W, MOTION_H);
+  let d;
+  try { d = motionCtx.getImageData(0, 0, MOTION_W, MOTION_H).data; }
+  catch(e){ return 0; }
+  if (!prevMotion){ prevMotion = new Uint8ClampedArray(d.length); prevMotion.set(d); return 0; }
+  let sum = 0;
+  const n = MOTION_W * MOTION_H;
+  for (let i = 0; i < d.length; i += 4){
+    const g = (d[i] + d[i+1] + d[i+2]) / 3;
+    const pg = (prevMotion[i] + prevMotion[i+1] + prevMotion[i+2]) / 3;
+    sum += Math.abs(g - pg);
+  }
+  prevMotion.set(d);
+  return sum / n / 255;
+}
+function updateSwingDetect(score){
+  const now = Date.now();
+  if (!prefs.autoClip || !prefs.profileId || !camReady){ resetSwingDetect(); return; }
+  if (now - lastClipAt < 5000){ resetSwingDetect(); return; }   // cooldown between auto clips
+  const th = SENS[prefs.sens] || SENS.med;
+  if (swingState === 'idle'){
+    consecHigh = (score > th.start) ? consecHigh + 1 : 0;
+    if (consecHigh >= 3){ swingState = 'swinging'; swingStartWall = now; consecLow = 0; }
+  } else {
+    consecLow = (score < th.end) ? consecLow + 1 : 0;
+    const dur = now - swingStartWall;
+    if ((consecLow >= 8 && dur > 800) || dur > 6000) finishAutoClip(now);
+  }
+}
+function finishAutoClip(now){
+  resetSwingDetect();
+  lastClipAt = now;
+  let t0 = swingStartWall - 1200, t1 = now + 600;
+  if (t1 - t0 < 2000) t1 = t0 + 2000;
+  const blob = extractClip(t0, t1);
+  if (!blob) return;   // not enough buffered video yet
+  const dur = Math.round((t1 - t0) / 1000);
+  Swings.add({profileId: prefs.profileId, ts: Date.now(), dur: dur, mime: recMime, blob: blob}).then(() => {
+    toast('Auto-clipped swing ✓');
+    if (!$('viewSwings').hidden) renderSwings();
+  }).catch(() => {});
+}
+
+/* ============ delay frame buffer (ImageBitmap ring, no encode/decode) ============ */
 function captureFrame(){
   if (!camReady || src.readyState < 2) return;
   const vw = src.videoWidth, vh = src.videoHeight;
   if (!vw || !vh) return;
-  const W = 640, H = Math.round(W * vh / vw);
+  const W = 480, H = Math.round(W * vh / vw);
   if (capCanvas.width !== W || capCanvas.height !== H){ capCanvas.width = W; capCanvas.height = H; }
   if (!drawCorrected(capCanvas.getContext('2d'), W, H, flipOn())) return;
   const t = performance.now();
-  try {
-    capCanvas.toBlob((b) => {
-      if (!b) return;
-      const url = URL.createObjectURL(b);
-      frameBuf.push({url:url, t:t});
+  if (window.createImageBitmap){
+    createImageBitmap(capCanvas).then((bm) => {
+      frameBuf.push({bm: bm, t: t});
       pruneFrames();
-    }, 'image/jpeg', 0.72);
-  } catch(e){}
+    }).catch(() => {});
+  }
+  updateSwingDetect(motionScore());
 }
 function pruneFrames(){
   const cutoff = performance.now() - MAX_BUF_MS;
   while (frameBuf.length && frameBuf[0].t < cutoff){
     const f = frameBuf.shift();
-    if (f.url !== shownUrl){ try { URL.revokeObjectURL(f.url); } catch(e){} }
+    try { f.bm.close(); } catch(e){}
   }
+}
+function clearFrames(){
+  frameBuf.forEach((f) => { try { f.bm.close(); } catch(e){} });
+  frameBuf = [];
 }
 function drawLoop(){
   rafId = requestAnimationFrame(drawLoop);
@@ -345,27 +413,21 @@ function drawLoop(){
     for (let i = frameBuf.length-1; i >= 0; i--){ if (frameBuf[i].t <= target){ f = frameBuf[i]; break; } }
     if (!f && frameBuf.length) f = frameBuf[0];
     if (f){
-      if (f.url !== shownUrl){
-        shownUrl = f.url;
-        // Keep showing the last decoded frame until the new one finishes
-        // decoding — swapping immediately caused black flicker between frames.
-        const img = new Image();
-        img.onload = () => { shownImg = img; };
-        img.src = f.url;
-      }
-      if (shownImg && shownImg.complete && shownImg.naturalWidth) drawCover(vctx, shownImg, cw, ch);
-      const span = frameBuf.length ? (performance.now() - frameBuf[0].t) : 0;
+      drawCover(vctx, f.bm, cw, ch);
+      const span = performance.now() - frameBuf[0].t;
       $('warmup').hidden = span >= prefs.delay*1000;
     } else {
       $('warmup').hidden = false;
     }
   }
-  // background recording canvas (corrected, full res)
-  const vw = src.videoWidth, vh = src.videoHeight;
-  if (vw && vh){
-    const RW = 1280, RH = Math.round(RW * vh / vw);
-    if (recCanvas.width !== RW || recCanvas.height !== RH){ recCanvas.width = RW; recCanvas.height = RH; }
-    drawCorrected(recCanvas.getContext('2d'), RW, RH, flip);
+  // background recording canvas (corrected, full res) — every 2nd frame is plenty
+  if ((recTick++ % 2) === 0){
+    const vw = src.videoWidth, vh = src.videoHeight;
+    if (vw && vh){
+      const RW = 1280, RH = Math.round(RW * vh / vw);
+      if (recCanvas.width !== RW || recCanvas.height !== RH){ recCanvas.width = RW; recCanvas.height = RH; }
+      drawCorrected(recCanvas.getContext('2d'), RW, RH, flip);
+    }
   }
 }
 function pickMime(){
@@ -381,9 +443,9 @@ function startRecorder(){
   recExt = recMime.indexOf('mp4') >= 0 ? 'mp4' : 'webm';
   chunks = []; initChunk = null;
   let rs = null;
-  try { rs = recCanvas.captureStream(30); } catch(e){ toast('Recording is not supported here.'); return; }
+  try { rs = recCanvas.captureStream(24); } catch(e){ toast('Recording is not supported here.'); return; }
   try {
-    recorder = new MediaRecorder(rs, {mimeType: recMime, videoBitsPerSecond: 6000000});
+    recorder = new MediaRecorder(rs, {mimeType: recMime, videoBitsPerSecond: 4000000});
   } catch(e){ toast('Recorder failed to start.'); return; }
   recorder.ondataavailable = (e) => {
     if (e.data && e.data.size > 0){
@@ -420,10 +482,10 @@ async function startCamera(){
   camReady = true;
   $('startOverlay').hidden = true;
   $('recDot').hidden = false;
-  frameBuf.forEach((f) => { try { URL.revokeObjectURL(f.url); } catch(e){} });
-  frameBuf = []; shownUrl = null; shownImg = null;
+  clearFrames();
+  resetSwingDetect();
   fitCanvas();
-  capTimer = setInterval(captureFrame, 100);
+  capTimer = setInterval(captureFrame, 125);
   cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(drawLoop);
   startRecorder();
@@ -435,21 +497,31 @@ function stopCamera(){
   stopRecorder();
   if (stream){ stream.getTracks().forEach((t) => { try { t.stop(); } catch(e){} }); stream = null; }
   src.srcObject = null;
-  frameBuf.forEach((f) => { try { URL.revokeObjectURL(f.url); } catch(e){} });
-  frameBuf = []; shownUrl = null; shownImg = null;
+  clearFrames();
+  resetSwingDetect();
   $('startOverlay').hidden = false;
   $('warmup').hidden = true;
   $('recDot').hidden = true;
 }
 
-/* ================= save swing ================= */
+/* ================= clip extraction + saving =================
+   The recorder keeps ~2.5 min of 1s chunks. A clip is the init segment +
+   every chunk overlapping [t0, t1]. */
+function extractClip(t0, t1){
+  if (!recorder || !initChunk || chunks.length < 3) return null;
+  const segs = chunks.filter((c) => {
+    if (c.blob === initChunk) return false;
+    const cs = c.t - 1000, ce = c.t;   // chunk covers roughly [t-1000, t]
+    return cs <= t1 && ce >= t0;
+  }).map((c) => c.blob);
+  if (!segs.length) return null;
+  return new Blob([initChunk].concat(segs), {type: recMime});
+}
 async function saveSwing(){
   if (!prefs.profileId){ toast('Pick a hitter first.'); showView('profiles'); return; }
-  if (!recorder || !initChunk || chunks.length < 2){ toast('Still rolling — try again in a few seconds.'); return; }
-  const cutoff = Date.now() - prefs.saveLen*1000;
-  const segs = chunks.filter((c) => c.blob !== initChunk && c.t >= cutoff).map((c) => c.blob);
-  if (!segs.length){ toast('Not enough video buffered yet.'); return; }
-  const blob = new Blob([initChunk].concat(segs), {type: recMime});
+  const now = Date.now();
+  const blob = extractClip(now - prefs.saveLen*1000, now);
+  if (!blob){ toast('Still rolling — try again in a few seconds.'); return; }
   try {
     await Swings.add({profileId: prefs.profileId, ts: Date.now(), dur: prefs.saveLen, mime: recMime, blob: blob});
   } catch(e){ toast('Save failed — storage may be full.'); return; }
@@ -609,6 +681,9 @@ function syncControls(){
   $('mirrorBtn').classList.toggle('on', flipOn());
   $('saveLenBtn').textContent = '⏱ ' + prefs.saveLen + 's';
   $('saveBtn').textContent = '● SAVE LAST ' + prefs.saveLen + 's';
+  $('autoClipBtn').textContent = '✂️ Auto-clip: ' + (prefs.autoClip ? 'On' : 'Off');
+  $('autoClipBtn').classList.toggle('on', !!prefs.autoClip);
+  $('sensBtn').textContent = 'Sensitivity: ' + ((SENS[prefs.sens] || SENS.med).label);
 }
 async function init(){
   try { db = await openDB(); }
@@ -637,6 +712,15 @@ async function init(){
   };
   $('startBtn').onclick = startCamera;
   $('saveBtn').onclick = saveSwing;
+  $('autoClipBtn').onclick = () => {
+    prefs.autoClip = !prefs.autoClip; savePrefs(); syncControls(); resetSwingDetect();
+    toast(prefs.autoClip ? 'Auto-clip on — swings save themselves' : 'Auto-clip off');
+  };
+  $('sensBtn').onclick = () => {
+    const order = ['low','med','high'];
+    prefs.sens = order[(order.indexOf(prefs.sens) + 1) % order.length];
+    savePrefs(); syncControls(); resetSwingDetect();
+  };
   $('profileChip').onclick = () => showView('profiles');
   $('navHitters').onclick = () => showView('profiles');
   $('navSwings').onclick = () => showView('swings');

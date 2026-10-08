@@ -145,6 +145,7 @@ section.page[hidden]{display:none;}
 <main id="viewCamera">
   <div id="stage">
     <canvas id="view"></canvas>
+    <video id="delayPlayer" muted playsinline preload="auto" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none;background:#000"></video>
     <div id="recDot" hidden><i></i>REC</div>
     <div id="warmup" class="overlay" hidden><div class="warmup-inner"><span class="dot"></span>BUFFERING…</div></div>
     <div id="startOverlay" class="overlay">
@@ -155,8 +156,15 @@ section.page[hidden]{display:none;}
   <div class="controls">
     <div class="crow">
       <span class="clabel">Delay</span>
-      <input id="delayRange" type="range" min="2" max="15" step="1" value="8"/>
+      <input id="delayRange" type="range" min="2" max="120" step="1" value="8"/>
       <span id="delayVal">8s</span>
+    </div>
+    <div class="crow" style="gap:6px">
+      <button type="button" class="tbtn preset" data-d="8" style="flex:1">8s</button>
+      <button type="button" class="tbtn preset" data-d="15" style="flex:1">15s</button>
+      <button type="button" class="tbtn preset" data-d="30" style="flex:1">30s</button>
+      <button type="button" class="tbtn preset" data-d="60" style="flex:1">1m</button>
+      <button type="button" class="tbtn preset" data-d="120" style="flex:1">2m</button>
     </div>
     <div class="crow">
       <div class="seg" style="flex:1">
@@ -231,6 +239,12 @@ function fileStamp(ts){
   const d = new Date(ts), p = (n) => String(n).padStart(2,'0');
   return d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
 }
+function fmtDelay(s){
+  s = Math.round(s);
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60), r = s % 60;
+  return r ? (m + 'm ' + r + 's') : (m + 'm');
+}
 function safeName(s){ return ((s || 'hitter').replace(/[^\w\-]+/g,'').slice(0,24)) || 'hitter'; }
 
 /* ================= prefs ================= */
@@ -281,7 +295,7 @@ const Swings = {
 };
 
 /* ================= camera + delay engine ================= */
-const src = $('src'), view = $('view'), vctx = view.getContext('2d');
+const src = $('src'), view = $('view'), vctx = view.getContext('2d'), dpv = $('delayPlayer');
 const capCanvas = document.createElement('canvas');   // small frames for the delay buffer
 const recCanvas = document.createElement('canvas');   // full-res frames for recording
 let stream = null, camReady = false, capTimer = null, rafId = 0;
@@ -395,6 +409,61 @@ function clearFrames(){
   frameBuf.forEach((f) => { try { f.bm.close(); } catch(e){} });
   frameBuf = [];
 }
+
+/* ============ long-delay playback (for delays over 15s, up to 2 min) ============
+   The recorder's 1-second chunks double as a ~2.5-minute lookback buffer, so
+   long delays play those chunks through a video element instead of the
+   frame ring (which would need far too much memory at that range). */
+let dpCurT = -1, dpUrl = null, dpLastTick = 0;
+function dpCleanup(){
+  try { dpv.pause(); } catch(e){}
+  dpv.removeAttribute('src'); dpv.load();
+  if (dpUrl){ try { URL.revokeObjectURL(dpUrl); } catch(e){} dpUrl = null; }
+  dpCurT = -1;
+  dpv.style.display = 'none';
+}
+function dpChunkFor(target){
+  for (let i = chunks.length - 1; i >= 0; i--){
+    const c = chunks[i];
+    if (c.blob === initChunk) continue;
+    if (c.t - 1000 <= target) return c;
+  }
+  return null;
+}
+function dpPlayChunkT(t){
+  const c = chunks.find((x) => x.t === t && x.blob !== initChunk);
+  if (!c || !initChunk) return;
+  if (dpUrl){ try { URL.revokeObjectURL(dpUrl); } catch(e){} }
+  dpCurT = t;
+  dpUrl = URL.createObjectURL(new Blob([initChunk, c.blob], {type: recMime}));
+  dpv.style.display = 'block';
+  if (dpv.src !== dpUrl) dpv.src = dpUrl;
+  dpv.play().catch(() => {});
+}
+function dpTick(){
+  if (!camReady || !initChunk || chunks.length < 3) return;
+  const target = Date.now() - prefs.delay * 1000;
+  const c = dpChunkFor(target);
+  if (!c){ $('warmup').hidden = false; return; }   // still buffering up to the delay
+  $('warmup').hidden = true;
+  if (c.t === dpCurT){
+    if (dpv.paused) dpv.play().catch(() => {});
+    return;
+  }
+  dpPlayChunkT(c.t);
+}
+function dpOnEnded(){
+  // advance to the chunk right after the one that just finished
+  const want = dpCurT + 1000;
+  let best = null, bestD = 1e9;
+  for (const c of chunks){
+    if (c.blob === initChunk) continue;
+    const d = Math.abs(c.t - want);
+    if (d < bestD){ bestD = d; best = c; }
+  }
+  if (best && bestD < 800) dpPlayChunkT(best.t);
+  else dpCurT = -1;   // watchdog tick will resync
+}
 function drawLoop(){
   rafId = requestAnimationFrame(drawLoop);
   if (!camReady || src.readyState < 2) return;
@@ -403,7 +472,14 @@ function drawLoop(){
   vctx.fillStyle = '#000';
   vctx.fillRect(0, 0, cw, ch);
   const flip = flipOn();
-  if (prefs.mode === 'live'){
+  const longDelay = prefs.mode === 'delay' && prefs.delay > 15;
+  if (longDelay){
+    if (dpv.style.display !== 'block') dpv.style.display = 'block';
+    const nowMs = performance.now();
+    if (nowMs - dpLastTick > 400){ dpLastTick = nowMs; dpTick(); }
+  } else {
+    if (dpv.style.display === 'block') dpCleanup();
+    if (prefs.mode === 'live'){
     // live preview goes through the corrected path too, so the mirror toggle is honored
     if (!drawCorrected(vctx, cw, ch, flip)) drawCover(vctx, src, cw, ch);
     $('warmup').hidden = true;
@@ -419,6 +495,7 @@ function drawLoop(){
     } else {
       $('warmup').hidden = false;
     }
+  }
   }
   // background recording canvas (corrected, full res) — every 2nd frame is plenty
   if ((recTick++ % 2) === 0){
@@ -499,6 +576,7 @@ function stopCamera(){
   src.srcObject = null;
   clearFrames();
   resetSwingDetect();
+  dpCleanup();
   $('startOverlay').hidden = false;
   $('warmup').hidden = true;
   $('recDot').hidden = true;
@@ -672,8 +750,8 @@ async function shareSwing(id){
 
 /* ================= wiring ================= */
 function syncControls(){
-  $('delayRange').value = prefs.delay;
-  $('delayVal').textContent = prefs.delay + 's';
+  $('delayRange').value = Math.min(120, Math.max(2, prefs.delay));
+  $('delayVal').textContent = fmtDelay(prefs.delay);
   $('modeDelay').classList.toggle('on', prefs.mode === 'delay');
   $('modeLive').classList.toggle('on', prefs.mode === 'live');
   $('camSwitch').textContent = prefs.facing === 'user' ? '🤳 Front' : '📷 Back';
@@ -691,6 +769,11 @@ async function init(){
   syncControls();
   await refreshChip();
   $('delayRange').addEventListener('input', (e) => { prefs.delay = parseInt(e.target.value,10) || 8; savePrefs(); syncControls(); });
+  document.querySelectorAll('.preset').forEach((b) => {
+    b.onclick = () => { prefs.delay = parseInt(b.dataset.d, 10) || 8; savePrefs(); syncControls(); };
+  });
+  dpv.addEventListener('ended', dpOnEnded);
+  dpv.addEventListener('error', () => { dpCurT = -1; });
   $('modeDelay').onclick = () => { prefs.mode = 'delay'; savePrefs(); syncControls(); };
   $('modeLive').onclick = () => { prefs.mode = 'live'; savePrefs(); syncControls(); };
   $('camSwitch').onclick = async () => {

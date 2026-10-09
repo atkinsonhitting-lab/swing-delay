@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
 <!-- NOTE: apple-mobile-web-app-capable is intentionally NOT set. iOS blocks getUserMedia inside standalone home-screen web apps, so the home-screen icon must open this page in Safari, where the camera works. -->
 <meta name="mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#000000"/>
 <title>Swing Delay</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='44' fill='%23e5484d'/%3E%3Ccircle cx='50' cy='50' r='17' fill='white'/%3E%3C/svg%3E"/>
@@ -31,17 +30,20 @@ button{font-family:inherit;}
 }
 .topbar h1{font-size:17px; letter-spacing:2px; margin:0; font-weight:800;}
 .topbar h1 span{color:var(--red);}
-#storageBanner{background:#3a2b12;color:#ffd88a;font-size:13px;padding:10px 14px;border-bottom:1px solid #5c4a1f;line-height:1.45;}
-#storageBanner[hidden]{display:none;}
 #profileChip{
   background:#1c1c22; color:var(--txt); border:1px solid var(--line);
   border-radius:999px; padding:8px 14px; font-size:14px; font-weight:600; max-width:55%;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 #profileChip .bats{color:var(--amber); font-weight:800; margin-left:6px;}
+#storageBanner{background:#3a2b12;color:#ffd88a;font-size:13px;padding:10px 14px;border-bottom:1px solid #5c4a1f;line-height:1.45;}
+#storageBanner[hidden]{display:none;}
 main{flex:1; display:flex; flex-direction:column; min-height:0; position:relative;}
 #stage{flex:1; position:relative; background:#000; min-height:0;}
-#view{position:absolute; inset:0; width:100%; height:100%; display:block;}
+#liveView{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#000;}
+#delayStage{position:absolute; inset:0; display:none;}
+#delayStage.on{display:block;}
+#delayStage video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#000;}
 .overlay{
   position:absolute; inset:0; display:flex; flex-direction:column; gap:14px;
   align-items:center; justify-content:center; background:rgba(0,0,0,.72);
@@ -56,8 +58,8 @@ main{flex:1; display:flex; flex-direction:column; min-height:0; position:relativ
 #startBtn:disabled{opacity:.55;}
 #warmup{font-size:15px; color:var(--dim); letter-spacing:1px;}
 #warmup .dot{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--amber); margin-right:8px; animation:blink 1s infinite;}
-.warmup-inner{font-size:15px; letter-spacing:1px;}
 @keyframes blink{50%{opacity:.2;}}
+.warmup-inner{font-size:15px; letter-spacing:1px;}
 #recDot{
   position:absolute; top:calc(env(safe-area-inset-top,0px) + 12px); left:14px; z-index:4;
   display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--txt);
@@ -65,12 +67,18 @@ main{flex:1; display:flex; flex-direction:column; min-height:0; position:relativ
 }
 #recDot[hidden]{display:none;}
 #recDot i{width:9px; height:9px; border-radius:50%; background:var(--red); animation:blink 1.2s infinite;}
+#camMode{
+  position:absolute; top:calc(env(safe-area-inset-top,0px) + 12px); right:14px; z-index:4;
+  font-size:12px; font-weight:700; color:var(--txt);
+  background:rgba(0,0,0,.55); padding:6px 10px; border-radius:999px;
+}
+#camMode[hidden]{display:none;}
 .controls{background:var(--panel); border-top:1px solid var(--line); padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 12px);}
 .crow{display:flex; align-items:center; gap:10px; margin-bottom:10px;}
 .crow:last-child{margin-bottom:0;}
 .clabel{font-size:13px; color:var(--dim); font-weight:600; min-width:52px;}
 #delayRange{flex:1; accent-color:var(--red); height:32px;}
-#delayVal{font-size:15px; font-weight:800; min-width:44px; text-align:right;}
+#delayVal{font-size:14px; font-weight:800; min-width:64px; text-align:right;}
 .seg{display:flex; background:#1c1c22; border:1px solid var(--line); border-radius:12px; overflow:hidden;}
 .seg button{
   flex:1; background:transparent; border:0; color:var(--dim);
@@ -124,6 +132,7 @@ section.page[hidden]{display:none;}
 }
 #addProfileBtn{background:var(--green); color:#fff; border:0; border-radius:12px; font-size:15px; font-weight:800; padding:0 18px;}
 .empty{color:var(--dim); text-align:center; padding:32px 20px; font-size:14px; line-height:1.6;}
+.verfoot{text-align:center; color:#3a3a42; font-size:11px; padding:18px 0 6px;}
 #playerModal{position:fixed; inset:0; background:rgba(0,0,0,.94); z-index:50; display:flex; flex-direction:column;}
 #playerModal[hidden]{display:none;}
 #player{flex:1; width:100%; background:#000; min-height:0;}
@@ -148,9 +157,13 @@ section.page[hidden]{display:none;}
 
 <main id="viewCamera">
   <div id="stage">
-    <canvas id="view"></canvas>
-    <video id="delayPlayer" muted playsinline preload="auto" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none;background:#000"></video>
+    <video id="liveView" muted playsinline style="display:none"></video>
+    <div id="delayStage">
+      <video id="dpA" muted playsinline preload="auto" style="opacity:0"></video>
+      <video id="dpB" muted playsinline preload="auto" style="opacity:0"></video>
+    </div>
     <div id="recDot" hidden><i></i>REC</div>
+    <div id="camMode" hidden></div>
     <div id="warmup" class="overlay" hidden><div class="warmup-inner"><span class="dot"></span>BUFFERING…</div></div>
     <div id="startOverlay" class="overlay">
       <button id="startBtn" type="button">Start Camera</button>
@@ -208,6 +221,7 @@ section.page[hidden]{display:none;}
       <select id="newBats"><option value="R">R</option><option value="L">L</option><option value="S">S</option></select>
       <button id="addProfileBtn" type="button">Add</button>
     </div>
+    <div class="verfoot">Swing Delay v6</div>
   </div>
 </section>
 
@@ -255,7 +269,8 @@ function fmtDelay(s){
   const m = Math.floor(s / 60), r = s % 60;
   return r ? (m + 'm ' + r + 's') : (m + 'm');
 }
-function safeName(s){ return ((s || 'hitter').replace(/[^\w\-]+/g,'').slice(0,24)) || 'hitter'; }
+function safeName(s){ return ((s || 'hitter').replace(/[^\w\-]+/g,'').slice(0,24) || 'hitter'); }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 /* ================= prefs ================= */
 const DEFAULT_PREFS = { delay:8, mode:'delay', saveLen:10, facing:'user', flip:{user:false,environment:false}, profileId:null, autoClip:true, sens:'med' };
@@ -272,6 +287,7 @@ function flipOn(){ return !!(prefs.flip && prefs.flip[prefs.facing]); }
 let db = null, storageOK = true, storageErrMsg = '';
 function openDB(){
   return new Promise((resolve, reject) => {
+    if (!window.indexedDB){ reject(new Error('indexedDB missing')); return; }
     const req = indexedDB.open('swing-delay-db', 1);
     req.onupgradeneeded = (e) => {
       const d = e.target.result;
@@ -280,7 +296,8 @@ function openDB(){
       s.createIndex('byProfile', 'profileId', {unique:false});
     };
     req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(req.error || new Error('open failed'));
+    setTimeout(() => reject(new Error('open timed out')), 8000);
   });
 }
 function idb(store, mode, fn){
@@ -304,18 +321,27 @@ const Swings = {
   add: (sw) => idb('swings','readwrite',(s) => s.add(sw)),
   del: (id) => idb('swings','readwrite',(s) => s.delete(id))
 };
+function showStorageError(msg){
+  storageOK = false;
+  storageErrMsg = msg || '';
+  $('storageBanner').hidden = false;
+  if (storageErrMsg) $('storageErr').textContent = '(' + storageErrMsg + ')';
+}
 
-/* ================= camera + delay engine ================= */
-const src = $('src'), view = $('view'), vctx = view.getContext('2d'), dpv = $('delayPlayer');
-const capCanvas = document.createElement('canvas');   // small frames for the delay buffer
-const recCanvas = document.createElement('canvas');   // full-res frames for recording
-let stream = null, camReady = false, capTimer = null, rafId = 0;
-let frameBuf = [];              // [{bm: ImageBitmap, t}] newest last (t = performance.now())
-let lastDrawn = null;           // bitmap currently on the display canvas (skip redundant redraws)
-let recorder = null, chunks = [], initChunk = null, recMime = '', recExt = 'mp4';
-const MAX_BUF_MS = 17500;       // covers the 15s max delay + margin
-let recTick = 0;
+/* ================= elements & state ================= */
+const src = $('src'), liveView = $('liveView'), delayStage = $('delayStage');
+const dpEls = { A: $('dpA'), B: $('dpB') };
+const capCanvas = document.createElement('canvas');   // small frames for motion detection
+let stream = null, camReady = false, starting = false;
+let capTimer = null, rafId = 0, dpTimer = null, recLastT = 0, viewTick = 0;
 
+/* Two recorders:
+   viewR — 720p30 @ ~8Mbps, 130s ring: feeds the smooth delay-view player.
+   clipR — full camera res up to 4K60, adaptive bitrate, 25s ring: feeds saved clips. */
+function makeRec(){ return { canvas: document.createElement('canvas'), recorder: null, chunks: [], initChunk: null, mime: '', ext: 'mp4' }; }
+const viewR = makeRec(), clipR = makeRec();
+
+/* Draw the camera frame corrected for the mirror setting (true orientation by default). */
 function drawCorrected(ctx, w, h, flip){
   const vw = src.videoWidth, vh = src.videoHeight;
   if (!vw || !vh || src.readyState < 2) return false;
@@ -327,16 +353,8 @@ function drawCorrected(ctx, w, h, flip){
   ctx.restore();
   return true;
 }
-function drawCover(ctx, img, cw, ch){
-  const vw = img.width || img.videoWidth || img.naturalWidth, vh = img.height || img.videoHeight || img.naturalHeight;
-  if (!vw || !vh) return;
-  const s = Math.max(cw/vw, ch/vh), dw = vw*s, dh = vh*s;
-  ctx.drawImage(img, (cw-dw)/2, (ch-dh)/2, dw, dh);
-}
-/* ================= swing auto-detection =================
-   Watches the motion level of the captured frames. A swing shows up as a
-   burst of strong motion; when it settles, the clip [start-1.2s, end+0.6s]
-   is saved automatically under the selected hitter. */
+
+/* ================= swing auto-detection ================= */
 const MOTION_W = 48, MOTION_H = 27;
 const motionCanvas = document.createElement('canvas');
 motionCanvas.width = MOTION_W; motionCanvas.height = MOTION_H;
@@ -368,7 +386,7 @@ function motionScore(){
 function updateSwingDetect(score){
   const now = Date.now();
   if (!prefs.autoClip || !prefs.profileId || !camReady){ resetSwingDetect(); return; }
-  if (now - lastClipAt < 5000){ resetSwingDetect(); return; }   // cooldown between auto clips
+  if (now - lastClipAt < 5000){ resetSwingDetect(); return; }
   const th = SENS[prefs.sens] || SENS.med;
   if (swingState === 'idle'){
     consecHigh = (score > th.start) ? consecHigh + 1 : 0;
@@ -384,16 +402,14 @@ function finishAutoClip(now){
   lastClipAt = now;
   let t0 = swingStartWall - 1200, t1 = now + 600;
   if (t1 - t0 < 2000) t1 = t0 + 2000;
-  const blob = extractClip(t0, t1);
-  if (!blob) return;   // not enough buffered video yet
+  const blob = extractClip(clipR, t0, t1);
+  if (!blob) return;
   const dur = Math.round((t1 - t0) / 1000);
-  Swings.add({profileId: prefs.profileId, ts: Date.now(), dur: dur, mime: recMime, blob: blob}).then(() => {
+  Swings.add({profileId: prefs.profileId, ts: Date.now(), dur: dur, mime: clipR.mime, blob: blob}).then(() => {
     toast('Auto-clipped swing ✓');
     if (!$('viewSwings').hidden) renderSwings();
   }).catch(() => {});
 }
-
-/* ============ delay frame buffer (ImageBitmap ring, no encode/decode) ============ */
 function captureFrame(){
   if (!camReady || src.readyState < 2) return;
   const vw = src.videoWidth, vh = src.videoHeight;
@@ -401,139 +417,17 @@ function captureFrame(){
   const W = 320, H = Math.round(W * vh / vw);
   if (capCanvas.width !== W || capCanvas.height !== H){ capCanvas.width = W; capCanvas.height = H; }
   if (!drawCorrected(capCanvas.getContext('2d'), W, H, flipOn())) return;
-  const t = performance.now();
-  if (window.createImageBitmap){
-    createImageBitmap(capCanvas).then((bm) => {
-      frameBuf.push({bm: bm, t: t});
-      pruneFrames();
-    }).catch(() => {});
-  }
   updateSwingDetect(motionScore());
 }
-function pruneFrames(){
-  const cutoff = performance.now() - MAX_BUF_MS;
-  while (frameBuf.length && frameBuf[0].t < cutoff){
-    const f = frameBuf.shift();
-    try { f.bm.close(); } catch(e){}
-  }
-}
-function clearFrames(){
-  frameBuf.forEach((f) => { try { f.bm.close(); } catch(e){} });
-  frameBuf = [];
-  lastDrawn = null;
-}
 
-/* ============ long-delay playback (for delays over 15s, up to 2 min) ============
-   The recorder's 1-second chunks double as a ~2.5-minute lookback buffer, so
-   long delays play those chunks through a video element instead of the
-   frame ring (which would need far too much memory at that range). */
-let dpCurT = -1, dpUrl = null, dpLastTick = 0;
-function dpCleanup(){
-  try { dpv.pause(); } catch(e){}
-  dpv.removeAttribute('src'); dpv.load();
-  if (dpUrl){ try { URL.revokeObjectURL(dpUrl); } catch(e){} dpUrl = null; }
-  dpCurT = -1;
-  dpv.style.display = 'none';
-}
-function dpChunkFor(target){
-  for (let i = chunks.length - 1; i >= 0; i--){
-    const c = chunks[i];
-    if (c.blob === initChunk) continue;
-    if (c.t - 1000 <= target) return c;
-  }
-  return null;
-}
-function dpPlayChunkT(t){
-  const c = chunks.find((x) => x.t === t && x.blob !== initChunk);
-  if (!c || !initChunk) return;
-  if (dpUrl){ try { URL.revokeObjectURL(dpUrl); } catch(e){} }
-  dpCurT = t;
-  dpUrl = URL.createObjectURL(new Blob([initChunk, c.blob], {type: recMime}));
-  dpv.style.display = 'block';
-  if (dpv.src !== dpUrl) dpv.src = dpUrl;
-  dpv.play().catch(() => {});
-}
-function dpTick(){
-  if (!camReady || !initChunk || chunks.length < 3) return;
-  const target = Date.now() - prefs.delay * 1000;
-  const c = dpChunkFor(target);
-  if (!c){ $('warmup').hidden = false; return; }   // still buffering up to the delay
-  $('warmup').hidden = true;
-  if (c.t === dpCurT){
-    if (dpv.paused) dpv.play().catch(() => {});
-    return;
-  }
-  dpPlayChunkT(c.t);
-}
-function dpOnEnded(){
-  // advance to the chunk right after the one that just finished
-  const want = dpCurT + 1000;
-  let best = null, bestD = 1e9;
-  for (const c of chunks){
-    if (c.blob === initChunk) continue;
-    const d = Math.abs(c.t - want);
-    if (d < bestD){ bestD = d; best = c; }
-  }
-  if (best && bestD < 800) dpPlayChunkT(best.t);
-  else dpCurT = -1;   // watchdog tick will resync
-}
-function drawLoop(){
-  rafId = requestAnimationFrame(drawLoop);
-  if (!camReady || src.readyState < 2) return;
-  const cw = view.width, ch = view.height;
-  if (!cw || !ch) return;
-  const flip = flipOn();
-  const longDelay = prefs.mode === 'delay' && prefs.delay > 15;
-  if (longDelay){
-    if (dpv.style.display !== 'block') dpv.style.display = 'block';
-    const nowMs = performance.now();
-    if (nowMs - dpLastTick > 400){ dpLastTick = nowMs; dpTick(); }
-  } else {
-    if (dpv.style.display === 'block') dpCleanup();
-    if (prefs.mode === 'live'){
-      // live preview goes through the corrected path too, so the mirror toggle is honored
-      vctx.fillStyle = '#000';
-      vctx.fillRect(0, 0, cw, ch);
-      if (!drawCorrected(vctx, cw, ch, flip)) drawCover(vctx, src, cw, ch);
-      lastDrawn = null;
-      $('warmup').hidden = true;
-    } else {
-      const target = performance.now() - prefs.delay*1000;
-      let f = null;
-      for (let i = frameBuf.length-1; i >= 0; i--){ if (frameBuf[i].t <= target){ f = frameBuf[i]; break; } }
-      if (!f && frameBuf.length) f = frameBuf[0];
-      if (f){
-        // Redraw ONLY when the frame actually changes — and clear+draw together,
-        // otherwise the screen strobes black between frames.
-        if (f.bm !== lastDrawn){
-          vctx.fillStyle = '#000';
-          vctx.fillRect(0, 0, cw, ch);
-          drawCover(vctx, f.bm, cw, ch);
-          lastDrawn = f.bm;
-        }
-        const span = performance.now() - frameBuf[0].t;
-        $('warmup').hidden = span >= prefs.delay*1000;
-      } else {
-        $('warmup').hidden = false;
-      }
-    }
-  }
-  // background recording canvas — full camera resolution (up to 4K), corrected
-  {
-    const vw = src.videoWidth, vh = src.videoHeight;
-    if (vw && vh){
-      if (recCanvas.width !== vw || recCanvas.height !== vh){ recCanvas.width = vw; recCanvas.height = vh; }
-      drawCorrected(recCanvas.getContext('2d'), vw, vh, flip);
-    }
-  }
-}
+/* ================= recorders ================= */
 function pickMime(){
   if (!window.MediaRecorder) return '';
   const cands = ['video/mp4;codecs="hvc1.1.6.L153.B0"','video/mp4;codecs="avc1.640034,mp4a.40.2"','video/mp4;codecs="avc1.42E01E,mp4a.40.2"','video/mp4','video/webm;codecs=vp9','video/webm'];
   for (const m of cands){ try { if (MediaRecorder.isTypeSupported(m)) return m; } catch(e){} }
   return '';
 }
-function pickBitrate(){
+function pickClipBitrate(){
   let w = 1280, h = 720, fps = 30;
   try {
     const t = stream && stream.getVideoTracks()[0];
@@ -541,36 +435,157 @@ function pickBitrate(){
     if (s.width){ w = s.width; h = s.height || w; }
     if (s.frameRate) fps = s.frameRate;
   } catch(e){}
-  const bps = Math.round(w * h * fps * 0.12);
-  return Math.min(50000000, Math.max(5000000, bps));
+  return Math.min(30000000, Math.max(8000000, Math.round(w * h * fps * 0.12)));
 }
-function startRecorder(){
-  stopRecorder();
-  recMime = pickMime();
-  if (!recMime){ toast('This browser cannot record video.'); return; }
-  recExt = recMime.indexOf('mp4') >= 0 ? 'mp4' : 'webm';
-  chunks = []; initChunk = null;
+function startRecorder(rec, opts){
+  stopRecorder(rec);
+  rec.mime = pickMime();
+  if (!rec.mime){ toast('This browser cannot record video.'); return false; }
+  rec.ext = rec.mime.indexOf('mp4') >= 0 ? 'mp4' : 'webm';
+  rec.chunks = []; rec.initChunk = null;
+  const c = rec.canvas;
+  if (c.width !== opts.w || c.height !== opts.h){ c.width = opts.w; c.height = opts.h; }
   let rs = null;
-  try { rs = recCanvas.captureStream(60); } catch(e){ toast('Recording is not supported here.'); return; }
+  try { rs = c.captureStream(opts.fps); } catch(e){ return false; }
   try {
-    recorder = new MediaRecorder(rs, {mimeType: recMime, videoBitsPerSecond: pickBitrate()});
-  } catch(e){ toast('Recorder failed to start.'); return; }
-  recorder.ondataavailable = (e) => {
+    rec.recorder = new MediaRecorder(rs, {mimeType: rec.mime, videoBitsPerSecond: opts.bps});
+  } catch(e){ return false; }
+  rec.recorder.ondataavailable = (e) => {
     if (e.data && e.data.size > 0){
-      if (!initChunk) initChunk = e.data;
-      chunks.push({blob:e.data, t:Date.now()});
-      const cut = Date.now() - 150000;
-      while (chunks.length && chunks[0].t < cut) chunks.shift();
+      if (!rec.initChunk) rec.initChunk = e.data;
+      rec.chunks.push({blob: e.data, t: Date.now()});
+      const cut = Date.now() - opts.keepMs;
+      while (rec.chunks.length && rec.chunks[0].t < cut) rec.chunks.shift();
     }
   };
-  recorder.onerror = () => toast('Recording error.');
-  try { recorder.start(1000); } catch(e){}
+  rec.recorder.onerror = () => {};
+  try { rec.recorder.start(1000); } catch(e){ return false; }
+  return true;
 }
-function stopRecorder(){
-  if (recorder && recorder.state !== 'inactive'){ try { recorder.stop(); } catch(e){} }
-  recorder = null;
+function stopRecorder(rec){
+  if (rec.recorder && rec.recorder.state !== 'inactive'){ try { rec.recorder.stop(); } catch(e){} }
+  rec.recorder = null;
 }
-let starting = false;
+/* A clip is the init segment + every chunk overlapping [t0, t1]. */
+function extractClip(rec, t0, t1){
+  if (!rec.recorder || !rec.initChunk || rec.chunks.length < 3) return null;
+  const segs = rec.chunks.filter((c) => {
+    if (c.blob === rec.initChunk) return false;
+    const cs = c.t - 1000, ce = c.t;
+    return cs <= t1 && ce >= t0;
+  }).map((c) => c.blob);
+  if (!segs.length) return null;
+  return new Blob([rec.initChunk].concat(segs), {type: rec.mime});
+}
+async function saveSwing(){
+  if (!prefs.profileId){ toast('Pick a hitter first.'); showView('profiles'); return; }
+  const now = Date.now();
+  const blob = extractClip(clipR, now - prefs.saveLen*1000, now);
+  if (!blob){ toast('Still rolling — try again in a few seconds.'); return; }
+  try {
+    await Swings.add({profileId: prefs.profileId, ts: Date.now(), dur: prefs.saveLen, mime: clipR.mime, blob: blob});
+  } catch(e){ toast('Save failed — storage may be full or blocked.'); return; }
+  let p = null;
+  try { p = await getProfile(prefs.profileId); } catch(e){}
+  toast('Saved to ' + (p ? p.name : 'hitter'));
+  if (!$('viewSwings').hidden) renderSwings();
+}
+
+/* ================= delay player (ping-pong preloaded chunks) =================
+   Plays viewR's 1s chunks through two stacked video elements for smooth,
+   hardware-decoded delay playback at any delay from 2s to 2min. */
+let dpShowing = 'A', dpCurT = -1, dpUrls = {A:null, B:null}, dpLoadedT = {A:-1, B:-1}, dpLastTick = 0;
+function dpEl(n){ return dpEls[n]; }
+function dpRevoke(n){
+  if (dpUrls[n]){ try { URL.revokeObjectURL(dpUrls[n]); } catch(e){} dpUrls[n] = null; }
+  dpLoadedT[n] = -1;
+}
+function dpPrepare(name, t){
+  if (dpLoadedT[name] === t) return true;
+  const c = viewR.chunks.find((x) => x.t === t && x.blob !== viewR.initChunk);
+  if (!c || !viewR.initChunk) return false;
+  dpRevoke(name);
+  dpUrls[name] = URL.createObjectURL(new Blob([viewR.initChunk, c.blob], {type: viewR.mime}));
+  dpLoadedT[name] = t;
+  const el = dpEl(name);
+  el.preload = 'auto';
+  el.src = dpUrls[name];
+  try { el.load(); } catch(e){}
+  return true;
+}
+function dpShow(name, t, offset){
+  const other = name === 'A' ? 'B' : 'A';
+  const el = dpEl(name), hideEl = dpEl(other);
+  const doShow = () => {
+    try { el.currentTime = Math.min(0.94, Math.max(0, offset || 0)); } catch(e){}
+    el.style.opacity = '1'; hideEl.style.opacity = '0';
+    try { const pr = el.play(); if (pr && pr.catch) pr.catch(() => {}); } catch(e){}
+    dpShowing = name; dpCurT = t;
+    const nxt = dpNextChunkT(t);
+    if (nxt) dpPrepare(other, nxt);
+  };
+  if (dpLoadedT[name] === t && el.readyState >= 1){ doShow(); }
+  else {
+    if (!dpPrepare(name, t)) return;
+    const onMeta = () => { el.removeEventListener('loadedmetadata', onMeta); doShow(); };
+    el.addEventListener('loadedmetadata', onMeta);
+  }
+}
+function dpNextChunkT(t){
+  let best = null, bestD = 1e9;
+  for (const c of viewR.chunks){
+    if (c.blob === viewR.initChunk) continue;
+    const d = c.t - t;
+    if (d > 200 && d < bestD){ bestD = d; best = c; }
+  }
+  return best ? best.t : null;
+}
+function dpChunkFor(target){
+  for (let i = viewR.chunks.length - 1; i >= 0; i--){
+    const c = viewR.chunks[i];
+    if (c.blob === viewR.initChunk) continue;
+    if (c.t - 1000 <= target) return c;
+  }
+  return null;
+}
+function dpWatchdog(){
+  if (!camReady || prefs.mode !== 'delay') return;
+  if (!viewR.initChunk || viewR.chunks.length < 3){ $('warmup').hidden = false; return; }
+  const target = Date.now() - prefs.delay * 1000;
+  const c = dpChunkFor(target);
+  if (!c){ $('warmup').hidden = false; return; }
+  $('warmup').hidden = true;
+  const offset = Math.min(0.94, Math.max(0, (target - (c.t - 1000)) / 1000));
+  if (c.t === dpCurT){
+    const el = dpEl(dpShowing);
+    if (el.paused){ try { const pr = el.play(); if (pr && pr.catch) pr.catch(() => {}); } catch(e){} }
+    else {
+      try {
+        if (el.readyState >= 1 && Math.abs(el.currentTime - offset) > 0.6) el.currentTime = offset;
+      } catch(e){}
+    }
+    return;
+  }
+  dpShow(dpShowing === 'A' ? 'B' : 'A', c.t, offset);
+}
+function dpOnEnded(name){
+  if (!camReady || prefs.mode !== 'delay') return;
+  const nxt = dpNextChunkT(dpCurT);
+  if (nxt) dpShow(name === 'A' ? 'B' : 'A', nxt, 0);
+}
+function dpHide(){
+  ['A','B'].forEach((n) => {
+    const el = dpEl(n);
+    try { el.pause(); } catch(e){}
+    el.removeAttribute('src'); try { el.load(); } catch(e){}
+    dpRevoke(n);
+    el.style.opacity = '0';
+  });
+  dpCurT = -1; dpShowing = 'A';
+  delayStage.classList.remove('on');
+}
+
+/* ================= camera ================= */
 function showCamError(kind){
   const box = $('camError'), txt = $('camErrorText');
   let msg;
@@ -589,6 +604,12 @@ function showCamError(kind){
   box.hidden = false;
 }
 function hideCamError(){ $('camError').hidden = true; }
+function updateStage(){
+  const delayMode = prefs.mode === 'delay';
+  liveView.style.display = (camReady && !delayMode) ? 'block' : 'none';
+  delayStage.classList.toggle('on', !!(camReady && delayMode));
+  if (!camReady || !delayMode) dpHide();
+}
 async function startCamera(){
   if (starting) return;
   hideCamError();
@@ -610,94 +631,86 @@ async function startCamera(){
     return;
   }
   src.srcObject = stream;
+  liveView.srcObject = stream;
   try { await src.play(); } catch(e){}
+  try { await liveView.play(); } catch(e){}
   camReady = true;
   $('startOverlay').hidden = true;
   $('recDot').hidden = false;
-  clearFrames();
   resetSwingDetect();
-  fitCanvas();
   try {
     const vs = stream.getVideoTracks()[0].getSettings();
-    if (vs.width) toast('Camera: ' + vs.width + '×' + vs.height + ' @ ' + Math.round(vs.frameRate || 0) + 'fps');
+    const cm = $('camMode');
+    if (vs.width){ cm.textContent = vs.width + '×' + vs.height + ' @ ' + Math.round(vs.frameRate || 0) + 'fps'; cm.hidden = false; }
   } catch(e){}
+  // view recorder: 720p30 for the smooth delay player (130s ring)
+  startRecorder(viewR, {w:1280, h:720, fps:30, bps:8000000, keepMs:135000});
+  // clip recorder: full camera res up to 4K60 for saved swings (25s ring)
+  const vw = Math.min(4096, src.videoWidth || 1280), vh = Math.min(4096, src.videoHeight || 720);
+  startRecorder(clipR, {w:vw, h:vh, fps:60, bps:pickClipBitrate(), keepMs:25000});
   capTimer = setInterval(captureFrame, 83);
   cancelAnimationFrame(rafId);
-  rafId = requestAnimationFrame(drawLoop);
-  startRecorder();
+  recLastT = 0; viewTick = 0;
+  rafId = requestAnimationFrame(recLoop);
+  dpTimer = setInterval(dpWatchdog, 400);
+  updateStage();
   starting = false;
   btn.disabled = false; btn.textContent = 'Start Camera';
 }
 function stopCamera(){
   camReady = false;
   if (capTimer){ clearInterval(capTimer); capTimer = null; }
+  if (dpTimer){ clearInterval(dpTimer); dpTimer = null; }
   cancelAnimationFrame(rafId);
-  stopRecorder();
+  stopRecorder(viewR); stopRecorder(clipR);
   if (stream){ stream.getTracks().forEach((t) => { try { t.stop(); } catch(e){} }); stream = null; }
-  src.srcObject = null;
-  clearFrames();
+  src.srcObject = null; liveView.srcObject = null;
   resetSwingDetect();
-  dpCleanup();
+  dpHide();
   $('startOverlay').hidden = false;
   $('warmup').hidden = true;
   $('recDot').hidden = true;
+  $('camMode').hidden = true;
+  updateStage();
+}
+/* Recording loop: redraw both recorder canvases from the live stream. */
+function recLoop(){
+  rafId = requestAnimationFrame(recLoop);
+  if (!camReady || src.readyState < 2) return;
+  const now = performance.now();
+  if (now - recLastT < 16) return;   // cap at ~60fps (matters on 120Hz screens)
+  recLastT = now;
+  const flip = flipOn();
+  const vw = src.videoWidth, vh = src.videoHeight;
+  if (vw && vh){
+    const cc = clipR.canvas;
+    drawCorrected(cc.getContext('2d'), cc.width, cc.height, flip);
+    if ((viewTick++ % 2) === 0){
+      const vc = viewR.canvas, VW = 1280, VH = Math.round(VW * vh / vw);
+      if (vc.width !== VW || vc.height !== VH){ vc.width = VW; vc.height = VH; }
+      drawCorrected(vc.getContext('2d'), VW, VH, flip);
+    }
+  }
 }
 
-/* ================= clip extraction + saving =================
-   The recorder keeps ~2.5 min of 1s chunks. A clip is the init segment +
-   every chunk overlapping [t0, t1]. */
-function extractClip(t0, t1){
-  if (!recorder || !initChunk || chunks.length < 3) return null;
-  const segs = chunks.filter((c) => {
-    if (c.blob === initChunk) return false;
-    const cs = c.t - 1000, ce = c.t;   // chunk covers roughly [t-1000, t]
-    return cs <= t1 && ce >= t0;
-  }).map((c) => c.blob);
-  if (!segs.length) return null;
-  return new Blob([initChunk].concat(segs), {type: recMime});
-}
-async function saveSwing(){
-  if (!prefs.profileId){ toast('Pick a hitter first.'); showView('profiles'); return; }
-  const now = Date.now();
-  const blob = extractClip(now - prefs.saveLen*1000, now);
-  if (!blob){ toast('Still rolling — try again in a few seconds.'); return; }
-  try {
-    await Swings.add({profileId: prefs.profileId, ts: Date.now(), dur: prefs.saveLen, mime: recMime, blob: blob});
-  } catch(e){ toast('Save failed — storage may be full.'); return; }
-  let p = null;
-  try { p = await getProfile(prefs.profileId); } catch(e){}
-  toast('Saved to ' + (p ? p.name : 'hitter'));
-  if (!$('viewSwings').hidden) renderSwings();
-}
+/* ================= profiles & swings UI ================= */
 async function getProfile(id){
   const all = await Profiles.all();
   for (const p of all) if (p.id === id) return p;
   return null;
 }
-
-/* ================= views ================= */
-const VIEWS = ['viewCamera','viewProfiles','viewSwings'];
-function showView(id){
-  VIEWS.forEach((v) => { $(v).hidden = (v !== id); });
-  if (id === 'viewProfiles') renderProfiles();
-  if (id === 'viewSwings') renderSwings();
-  if (id === 'viewCamera') fitCanvas();
-}
-function fitCanvas(){
-  const r = $('stage').getBoundingClientRect();
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
-  if (view.width !== w || view.height !== h){ view.width = w; view.height = h; }
-}
-
-/* ================= profiles UI ================= */
 async function refreshChip(){
   let p = null;
   try { p = prefs.profileId ? await getProfile(prefs.profileId) : null; }
   catch(e){}
   $('profileChip').innerHTML = p ? (escapeHtml(p.name) + '<span class="bats">' + escapeHtml(p.bats||'') + '</span> ▾') : 'No hitter ▾';
 }
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const VIEWS = ['viewCamera','viewProfiles','viewSwings'];
+function showView(id){
+  VIEWS.forEach((v) => { $(v).hidden = (v !== id); });
+  if (id === 'viewProfiles') renderProfiles();
+  if (id === 'viewSwings') renderSwings();
+}
 async function renderProfiles(){
   const list = $('profileList');
   let profiles = [];
@@ -818,7 +831,7 @@ async function shareSwing(id){
       await navigator.share({files:[file], title:'Swing video'});
       return;
     }
-  } catch(e){ /* user cancelled or share failed */ return; }
+  } catch(e){ return; }
   toast('Sharing is not supported here — use Download.');
 }
 
@@ -831,25 +844,23 @@ function syncControls(){
   $('camSwitch').textContent = prefs.facing === 'user' ? '🤳 Front' : '📷 Back';
   $('mirrorBtn').textContent = '🪞 Mirror: ' + (flipOn() ? 'On' : 'Off');
   $('mirrorBtn').classList.toggle('on', flipOn());
+  $('liveView').style.transform = flipOn() ? 'scaleX(-1)' : 'none';
   $('saveLenBtn').textContent = '⏱ ' + prefs.saveLen + 's';
   $('saveBtn').textContent = '● SAVE LAST ' + prefs.saveLen + 's';
   $('autoClipBtn').textContent = '✂️ Auto-clip: ' + (prefs.autoClip ? 'On' : 'Off');
   $('autoClipBtn').classList.toggle('on', !!prefs.autoClip);
   $('sensBtn').textContent = 'Sensitivity: ' + ((SENS[prefs.sens] || SENS.med).label);
-}
-function showStorageError(msg){
-  storageOK = false;
-  storageErrMsg = msg || '';
-  $('storageBanner').hidden = false;
-  if (storageErrMsg) $('storageErr').textContent = '(' + storageErrMsg + ')';
+  updateStage();
 }
 function wireControls(){
   $('delayRange').addEventListener('input', (e) => { prefs.delay = parseInt(e.target.value,10) || 8; savePrefs(); syncControls(); });
   document.querySelectorAll('.preset').forEach((b) => {
     b.onclick = () => { prefs.delay = parseInt(b.dataset.d, 10) || 8; savePrefs(); syncControls(); };
   });
-  dpv.addEventListener('ended', dpOnEnded);
-  dpv.addEventListener('error', () => { dpCurT = -1; });
+  dpEls.A.addEventListener('ended', () => dpOnEnded('A'));
+  dpEls.B.addEventListener('ended', () => dpOnEnded('B'));
+  dpEls.A.addEventListener('error', () => { if (dpShowing === 'A') dpCurT = -1; });
+  dpEls.B.addEventListener('error', () => { if (dpShowing === 'B') dpCurT = -1; });
   $('modeDelay').onclick = () => { prefs.mode = 'delay'; savePrefs(); syncControls(); };
   $('modeLive').onclick = () => { prefs.mode = 'live'; savePrefs(); syncControls(); };
   $('camSwitch').onclick = async () => {
@@ -912,12 +923,10 @@ function wireControls(){
     try { await Swings.del(playerSwingId); } catch(e){ toast('Couldn\u2019t delete — storage is blocked'); return; }
     closePlayer(); await renderSwings();
   };
-  window.addEventListener('resize', fitCanvas);
-  window.addEventListener('orientationchange', () => setTimeout(fitCanvas, 300));
   document.addEventListener('pagehide', stopCamera);
 }
 async function init(){
-  wireControls();          // buttons always work, even if storage fails
+  wireControls();
   syncControls();
   try { db = await openDB(); }
   catch(e){
@@ -926,7 +935,6 @@ async function init(){
     toast('Saving is blocked in this browser — see the warning up top');
   }
   try { await refreshChip(); } catch(e){}
-  fitCanvas();
   if (window.navigator.standalone === true) showCamError('standalone');
   showView('camera');
 }

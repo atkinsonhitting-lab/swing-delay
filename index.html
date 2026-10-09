@@ -478,8 +478,6 @@ function drawLoop(){
   if (!camReady || src.readyState < 2) return;
   const cw = view.width, ch = view.height;
   if (!cw || !ch) return;
-  vctx.fillStyle = '#000';
-  vctx.fillRect(0, 0, cw, ch);
   const flip = flipOn();
   const longDelay = prefs.mode === 'delay' && prefs.delay > 15;
   if (longDelay){
@@ -489,22 +487,32 @@ function drawLoop(){
   } else {
     if (dpv.style.display === 'block') dpCleanup();
     if (prefs.mode === 'live'){
-    // live preview goes through the corrected path too, so the mirror toggle is honored
-    if (!drawCorrected(vctx, cw, ch, flip)) drawCover(vctx, src, cw, ch);
-    $('warmup').hidden = true;
-  } else {
-    const target = performance.now() - prefs.delay*1000;
-    let f = null;
-    for (let i = frameBuf.length-1; i >= 0; i--){ if (frameBuf[i].t <= target){ f = frameBuf[i]; break; } }
-    if (!f && frameBuf.length) f = frameBuf[0];
-    if (f){
-      if (f.bm !== lastDrawn){ drawCover(vctx, f.bm, cw, ch); lastDrawn = f.bm; }
-      const span = performance.now() - frameBuf[0].t;
-      $('warmup').hidden = span >= prefs.delay*1000;
+      // live preview goes through the corrected path too, so the mirror toggle is honored
+      vctx.fillStyle = '#000';
+      vctx.fillRect(0, 0, cw, ch);
+      if (!drawCorrected(vctx, cw, ch, flip)) drawCover(vctx, src, cw, ch);
+      lastDrawn = null;
+      $('warmup').hidden = true;
     } else {
-      $('warmup').hidden = false;
+      const target = performance.now() - prefs.delay*1000;
+      let f = null;
+      for (let i = frameBuf.length-1; i >= 0; i--){ if (frameBuf[i].t <= target){ f = frameBuf[i]; break; } }
+      if (!f && frameBuf.length) f = frameBuf[0];
+      if (f){
+        // Redraw ONLY when the frame actually changes — and clear+draw together,
+        // otherwise the screen strobes black between frames.
+        if (f.bm !== lastDrawn){
+          vctx.fillStyle = '#000';
+          vctx.fillRect(0, 0, cw, ch);
+          drawCover(vctx, f.bm, cw, ch);
+          lastDrawn = f.bm;
+        }
+        const span = performance.now() - frameBuf[0].t;
+        $('warmup').hidden = span >= prefs.delay*1000;
+      } else {
+        $('warmup').hidden = false;
+      }
     }
-  }
   }
   // background recording canvas (corrected, full res) — every 2nd frame is plenty
   if ((recTick++ % 2) === 0){

@@ -204,6 +204,7 @@ section.page[hidden]{display:none;}
     <div class="crow">
       <button id="autoClipBtn" type="button" class="tbtn" style="flex:1">✂️ Auto-clip: On</button>
       <button id="sensBtn" type="button" class="tbtn">Sensitivity: Med</button>
+      <button id="qualityBtn" type="button" class="tbtn">Quality: Med</button>
     </div>
     <div class="crow navrow">
       <button id="navHitters" type="button" class="tbtn">👥 Hitters</button>
@@ -221,7 +222,7 @@ section.page[hidden]{display:none;}
       <select id="newBats"><option value="R">R</option><option value="L">L</option><option value="S">S</option></select>
       <button id="addProfileBtn" type="button">Add</button>
     </div>
-    <div class="verfoot">Swing Delay v6</div>
+    <div class="verfoot">Swing Delay v7</div>
   </div>
 </section>
 
@@ -273,7 +274,7 @@ function safeName(s){ return ((s || 'hitter').replace(/[^\w\-]+/g,'').slice(0,24
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 /* ================= prefs ================= */
-const DEFAULT_PREFS = { delay:8, mode:'delay', saveLen:10, facing:'user', flip:{user:false,environment:false}, profileId:null, autoClip:true, sens:'med' };
+const DEFAULT_PREFS = { delay:8, mode:'delay', saveLen:10, facing:'user', flip:{user:false,environment:false}, profileId:null, autoClip:true, sens:'med', quality:'med' };
 let prefs = Object.assign({}, DEFAULT_PREFS);
 try {
   const raw = localStorage.getItem('swingdelay-prefs');
@@ -335,9 +336,16 @@ const capCanvas = document.createElement('canvas');   // small frames for motion
 let stream = null, camReady = false, starting = false;
 let capTimer = null, rafId = 0, dpTimer = null, recLastT = 0, viewTick = 0;
 
-/* Two recorders:
-   viewR — 720p30 @ ~8Mbps, 130s ring: feeds the smooth delay-view player.
-   clipR — full camera res up to 4K60, adaptive bitrate, 25s ring: feeds saved clips. */
+/* Recording quality presets. Med (1080p60) is the safe default — High (4K60)
+   is heavy and can stutter on some phones. */
+const QUALITY = {
+  high: {label:'High', reqW:3840, reqH:2160, reqF:60, maxDim:4096, fps:60, maxBps:30000000, loopMs:16},
+  med:  {label:'Med',  reqW:1920, reqH:1080,  reqF:60, maxDim:1920,  fps:60, maxBps:16000000, loopMs:16},
+  low:  {label:'Low',  reqW:1280, reqH:720,   reqF:30, maxDim:960,   fps:30, maxBps:6000000,  loopMs:33}
+};
+function qual(){ return QUALITY[prefs.quality] || QUALITY.med; }
+/* Two recorders: viewR (720p30, 130s ring) feeds the smooth delay-view player;
+   clipR (quality-sized, 25s ring) feeds saved clips. */
 function makeRec(){ return { canvas: document.createElement('canvas'), recorder: null, chunks: [], initChunk: null, mime: '', ext: 'mp4' }; }
 const viewR = makeRec(), clipR = makeRec();
 
@@ -427,7 +435,7 @@ function pickMime(){
   for (const m of cands){ try { if (MediaRecorder.isTypeSupported(m)) return m; } catch(e){} }
   return '';
 }
-function pickClipBitrate(){
+function pickClipBitrate(maxBps){
   let w = 1280, h = 720, fps = 30;
   try {
     const t = stream && stream.getVideoTracks()[0];
@@ -435,7 +443,7 @@ function pickClipBitrate(){
     if (s.width){ w = s.width; h = s.height || w; }
     if (s.frameRate) fps = s.frameRate;
   } catch(e){}
-  return Math.min(30000000, Math.max(8000000, Math.round(w * h * fps * 0.12)));
+  return Math.min(maxBps, Math.max(4000000, Math.round(w * h * fps * 0.12)));
 }
 function startRecorder(rec, opts){
   stopRecorder(rec);
@@ -619,9 +627,10 @@ async function startCamera(){
   const btn = $('startBtn');
   btn.disabled = true; btn.textContent = 'Starting…';
   stopCamera();
+  const q = qual();
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: {facingMode: prefs.facing, width:{ideal:3840}, height:{ideal:2160}, frameRate:{ideal:60}},
+      video: {facingMode: prefs.facing, width:{ideal:q.reqW}, height:{ideal:q.reqH}, frameRate:{ideal:q.reqF}},
       audio: false
     });
   } catch(err){
@@ -645,9 +654,11 @@ async function startCamera(){
   } catch(e){}
   // view recorder: 720p30 for the smooth delay player (130s ring)
   startRecorder(viewR, {w:1280, h:720, fps:30, bps:8000000, keepMs:135000});
-  // clip recorder: full camera res up to 4K60 for saved swings (25s ring)
-  const vw = Math.min(4096, src.videoWidth || 1280), vh = Math.min(4096, src.videoHeight || 720);
-  startRecorder(clipR, {w:vw, h:vh, fps:60, bps:pickClipBitrate(), keepMs:25000});
+  // clip recorder: quality-sized for saved swings (25s ring)
+  const vw = src.videoWidth || q.reqW, vh = src.videoHeight || q.reqH;
+  const sc = Math.min(1, q.maxDim / Math.max(vw, vh));
+  const cw = Math.max(2, Math.round(vw * sc / 2) * 2), ch = Math.max(2, Math.round(vh * sc / 2) * 2);
+  startRecorder(clipR, {w:cw, h:ch, fps:q.fps, bps:pickClipBitrate(q.maxBps), keepMs:25000});
   capTimer = setInterval(captureFrame, 83);
   cancelAnimationFrame(rafId);
   recLastT = 0; viewTick = 0;
@@ -678,7 +689,8 @@ function recLoop(){
   rafId = requestAnimationFrame(recLoop);
   if (!camReady || src.readyState < 2) return;
   const now = performance.now();
-  if (now - recLastT < 16) return;   // cap at ~60fps (matters on 120Hz screens)
+  const loopMs = qual().loopMs;
+  if (now - recLastT < loopMs) return;
   recLastT = now;
   const flip = flipOn();
   const vw = src.videoWidth, vh = src.videoHeight;
@@ -850,6 +862,7 @@ function syncControls(){
   $('autoClipBtn').textContent = '✂️ Auto-clip: ' + (prefs.autoClip ? 'On' : 'Off');
   $('autoClipBtn').classList.toggle('on', !!prefs.autoClip);
   $('sensBtn').textContent = 'Sensitivity: ' + ((SENS[prefs.sens] || SENS.med).label);
+  $('qualityBtn').textContent = 'Quality: ' + qual().label;
   updateStage();
 }
 function wireControls(){
@@ -894,6 +907,13 @@ function wireControls(){
     const order = ['low','med','high'];
     prefs.sens = order[(order.indexOf(prefs.sens) + 1) % order.length];
     savePrefs(); syncControls(); resetSwingDetect();
+  };
+  $('qualityBtn').onclick = async () => {
+    const order = ['low','med','high'];
+    prefs.quality = order[(order.indexOf(prefs.quality) + 1) % order.length];
+    savePrefs(); syncControls();
+    toast('Quality: ' + qual().label + (prefs.quality === 'high' ? ' (4K — heavy)' : ''));
+    if (camReady) await startCamera();
   };
   $('profileChip').onclick = () => showView('profiles');
   $('navHitters').onclick = () => showView('profiles');

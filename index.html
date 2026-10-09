@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
-<meta name="apple-mobile-web-app-capable" content="yes"/>
+<!-- NOTE: apple-mobile-web-app-capable is intentionally NOT set. iOS blocks getUserMedia inside standalone home-screen web apps, so the home-screen icon must open this page in Safari, where the camera works. -->
 <meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="theme-color" content="#000000"/>
@@ -51,6 +51,7 @@ main{flex:1; display:flex; flex-direction:column; min-height:0; position:relativ
   background:var(--red); color:#fff; border:0; border-radius:16px;
   font-size:20px; font-weight:800; padding:18px 42px;
 }
+#startBtn:disabled{opacity:.55;}
 #warmup{font-size:15px; color:var(--dim); letter-spacing:1px;}
 #warmup .dot{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--amber); margin-right:8px; animation:blink 1s infinite;}
 .warmup-inner{font-size:15px; letter-spacing:1px;}
@@ -151,6 +152,12 @@ section.page[hidden]{display:none;}
     <div id="startOverlay" class="overlay">
       <button id="startBtn" type="button">Start Camera</button>
       <p>Point the phone at the cage. The screen replays each swing on a delay so hitters can watch right after they hit.</p>
+      <p style="font-size:12px">Use this in Safari — the iPhone camera doesn't work from a full-screen home-screen icon.</p>
+      <div id="camError" hidden style="background:#2a1215;border:1px solid #5c2228;border-radius:14px;padding:14px;max-width:330px">
+        <b style="color:#ff8589">Camera unavailable</b>
+        <p id="camErrorText" style="margin:8px 0 12px"></p>
+        <button id="copyLinkBtn" type="button" class="tbtn">Copy app link</button>
+      </div>
     </div>
   </div>
   <div class="controls">
@@ -300,6 +307,7 @@ const capCanvas = document.createElement('canvas');   // small frames for the de
 const recCanvas = document.createElement('canvas');   // full-res frames for recording
 let stream = null, camReady = false, capTimer = null, rafId = 0;
 let frameBuf = [];              // [{bm: ImageBitmap, t}] newest last (t = performance.now())
+let lastDrawn = null;           // bitmap currently on the display canvas (skip redundant redraws)
 let recorder = null, chunks = [], initChunk = null, recMime = '', recExt = 'mp4';
 const MAX_BUF_MS = 17500;       // covers the 15s max delay + margin
 let recTick = 0;
@@ -386,7 +394,7 @@ function captureFrame(){
   if (!camReady || src.readyState < 2) return;
   const vw = src.videoWidth, vh = src.videoHeight;
   if (!vw || !vh) return;
-  const W = 480, H = Math.round(W * vh / vw);
+  const W = 320, H = Math.round(W * vh / vw);
   if (capCanvas.width !== W || capCanvas.height !== H){ capCanvas.width = W; capCanvas.height = H; }
   if (!drawCorrected(capCanvas.getContext('2d'), W, H, flipOn())) return;
   const t = performance.now();
@@ -408,6 +416,7 @@ function pruneFrames(){
 function clearFrames(){
   frameBuf.forEach((f) => { try { f.bm.close(); } catch(e){} });
   frameBuf = [];
+  lastDrawn = null;
 }
 
 /* ============ long-delay playback (for delays over 15s, up to 2 min) ============
@@ -489,7 +498,7 @@ function drawLoop(){
     for (let i = frameBuf.length-1; i >= 0; i--){ if (frameBuf[i].t <= target){ f = frameBuf[i]; break; } }
     if (!f && frameBuf.length) f = frameBuf[0];
     if (f){
-      drawCover(vctx, f.bm, cw, ch);
+      if (f.bm !== lastDrawn){ drawCover(vctx, f.bm, cw, ch); lastDrawn = f.bm; }
       const span = performance.now() - frameBuf[0].t;
       $('warmup').hidden = span >= prefs.delay*1000;
     } else {
@@ -539,19 +548,43 @@ function stopRecorder(){
   if (recorder && recorder.state !== 'inactive'){ try { recorder.stop(); } catch(e){} }
   recorder = null;
 }
-async function startCamera(){
-  stopCamera();
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    toast('Camera is not available in this browser.');
-    return;
+let starting = false;
+function showCamError(kind){
+  const box = $('camError'), txt = $('camErrorText');
+  let msg;
+  if (kind === 'standalone'){
+    msg = 'You opened the old full-screen icon, and Apple blocks the iPhone camera in those. Delete this icon from your home screen, then open the app link in Safari (or add it to your home screen again — the new icon opens in Safari, where the camera works).';
+  } else if (kind === 'noapi'){
+    msg = 'This browser can\u2019t reach the camera. Open the app link in Safari on your iPhone and tap Start Camera there.';
+  } else if (kind === 'NotAllowedError' || kind === 'SecurityError'){
+    msg = 'Camera permission was blocked. In Safari, tap the aA button in the address bar \u2192 Website Settings \u2192 Camera \u2192 Allow, then tap Start Camera again.';
+  } else if (kind === 'NotFoundError' || kind === 'OverconstrainedError'){
+    msg = 'No camera was found on this device (' + kind + ').';
+  } else {
+    msg = 'The camera didn\u2019t start (' + (kind || 'unknown error') + '). Try opening the app link in Safari.';
   }
+  txt.textContent = msg;
+  box.hidden = false;
+}
+function hideCamError(){ $('camError').hidden = true; }
+async function startCamera(){
+  if (starting) return;
+  hideCamError();
+  if (window.navigator.standalone === true){ showCamError('standalone'); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ showCamError('noapi'); return; }
+  starting = true;
+  const btn = $('startBtn');
+  btn.disabled = true; btn.textContent = 'Starting…';
+  stopCamera();
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {facingMode: prefs.facing, width:{ideal:1280}, height:{ideal:720}},
       audio: false
     });
   } catch(err){
-    toast('Camera blocked — allow camera access, then tap Start Camera.');
+    starting = false;
+    btn.disabled = false; btn.textContent = 'Start Camera';
+    showCamError(err && err.name);
     return;
   }
   src.srcObject = stream;
@@ -562,10 +595,12 @@ async function startCamera(){
   clearFrames();
   resetSwingDetect();
   fitCanvas();
-  capTimer = setInterval(captureFrame, 125);
+  capTimer = setInterval(captureFrame, 83);
   cancelAnimationFrame(rafId);
   rafId = requestAnimationFrame(drawLoop);
   startRecorder();
+  starting = false;
+  btn.disabled = false; btn.textContent = 'Start Camera';
 }
 function stopCamera(){
   camReady = false;
@@ -794,6 +829,10 @@ async function init(){
     savePrefs(); syncControls();
   };
   $('startBtn').onclick = startCamera;
+  $('copyLinkBtn').onclick = async () => {
+    try { await navigator.clipboard.writeText(location.href); toast('Link copied — paste it in Safari'); }
+    catch(e){ toast('Copy failed — long-press the address bar to copy the link'); }
+  };
   $('saveBtn').onclick = saveSwing;
   $('autoClipBtn').onclick = () => {
     prefs.autoClip = !prefs.autoClip; savePrefs(); syncControls(); resetSwingDetect();
@@ -833,6 +872,7 @@ async function init(){
   window.addEventListener('orientationchange', () => setTimeout(fitCanvas, 300));
   document.addEventListener('pagehide', stopCamera);
   fitCanvas();
+  if (window.navigator.standalone === true) showCamError('standalone');
   showView('camera');
 }
 document.addEventListener('DOMContentLoaded', init);

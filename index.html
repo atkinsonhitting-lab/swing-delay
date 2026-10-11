@@ -344,6 +344,12 @@ const QUALITY = {
   low:  {label:'Low',  reqW:1280, reqH:720,   reqF:30, maxDim:960,   fps:30, maxBps:6000000,  loopMs:33}
 };
 function qual(){ return QUALITY[prefs.quality] || QUALITY.med; }
+/* View-recorder frame size: preserve the camera's aspect, capped so the
+   delay preview stays light. Computed BEFORE captureStream starts. */
+function viewSize(vw, vh){
+  const s = Math.min(1, 1280/Math.max(vw,vh), 720/Math.min(vw,vh));
+  return [Math.max(2, Math.round(vw*s/2)*2), Math.max(2, Math.round(vh*s/2)*2)];
+}
 /* Two recorders: viewR (720p30, 130s ring) feeds the smooth delay-view player;
    clipR (quality-sized, 25s ring) feeds saved clips. */
 function makeRec(){ return { canvas: document.createElement('canvas'), recorder: null, chunks: [], initChunk: null, mime: '', ext: 'mp4' }; }
@@ -652,8 +658,10 @@ async function startCamera(){
     const cm = $('camMode');
     if (vs.width){ cm.textContent = vs.width + '×' + vs.height + ' @ ' + Math.round(vs.frameRate || 0) + 'fps'; cm.hidden = false; }
   } catch(e){}
-  // view recorder: 720p30 for the smooth delay player (130s ring)
-  startRecorder(viewR, {w:1280, h:720, fps:30, bps:8000000, keepMs:135000});
+  // view recorder: aspect-correct size set BEFORE captureStream (130s ring)
+  const svw = src.videoWidth || 1280, svh = src.videoHeight || 720;
+  const vsz = viewSize(svw, svh);
+  startRecorder(viewR, {w:vsz[0], h:vsz[1], fps:30, bps:8000000, keepMs:135000});
   // clip recorder: quality-sized for saved swings (25s ring)
   const vw = src.videoWidth || q.reqW, vh = src.videoHeight || q.reqH;
   const sc = Math.min(1, q.maxDim / Math.max(vw, vh));
@@ -698,9 +706,9 @@ function recLoop(){
     const cc = clipR.canvas;
     drawCorrected(cc.getContext('2d'), cc.width, cc.height, flip);
     if ((viewTick++ % 2) === 0){
-      const vc = viewR.canvas, VW = 1280, VH = Math.round(VW * vh / vw);
-      if (vc.width !== VW || vc.height !== VH){ vc.width = VW; vc.height = VH; }
-      drawCorrected(vc.getContext('2d'), VW, VH, flip);
+      const vc = viewR.canvas, vsz = viewSize(vw, vh);
+      if (vc.width !== vsz[0] || vc.height !== vsz[1]){ vc.width = vsz[0]; vc.height = vsz[1]; }
+      drawCorrected(vc.getContext('2d'), vsz[0], vsz[1], flip);
     }
   }
 }

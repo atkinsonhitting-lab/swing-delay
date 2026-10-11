@@ -3,987 +3,185 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
-<!-- NOTE: apple-mobile-web-app-capable is intentionally NOT set. iOS blocks getUserMedia inside standalone home-screen web apps, so the home-screen icon must open this page in Safari, where the camera works. -->
+<!-- NOTE: apple-mobile-web-app-capable is intentionally NOT set. Apple blocks
+     getUserMedia inside installed home-screen web apps on iOS, so the camera
+     only works when this page runs in Safari. The home-screen icon opens in Safari. -->
 <meta name="mobile-web-app-capable" content="yes"/>
-<meta name="theme-color" content="#000000"/>
-<title>Swing Delay</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='44' fill='%23e5484d'/%3E%3Ccircle cx='50' cy='50' r='17' fill='white'/%3E%3C/svg%3E"/>
-<style>
-:root{
-  --bg:#000; --panel:#101014; --line:#26262e; --txt:#f5f5f7; --dim:#a1a1aa;
-  --red:#e5484d; --green:#30a46c; --blue:#3e9bff; --amber:#f5a524;
-}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-html,body{height:100%;margin:0;padding:0;}
-body{
-  background:var(--bg); color:var(--txt);
-  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
-  display:flex; flex-direction:column; max-width:640px; margin:0 auto;
-  height:100%; height:100dvh; overflow:hidden; overscroll-behavior:none;
-  user-select:none; -webkit-user-select:none;
-}
-button{font-family:inherit;}
-.topbar{
-  display:flex; align-items:center; justify-content:space-between;
-  padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px;
-  border-bottom:1px solid var(--line); background:var(--panel);
-}
-.topbar h1{font-size:17px; letter-spacing:2px; margin:0; font-weight:800;}
-.topbar h1 span{color:var(--red);}
-#profileChip{
-  background:#1c1c22; color:var(--txt); border:1px solid var(--line);
-  border-radius:999px; padding:8px 14px; font-size:14px; font-weight:600; max-width:55%;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}
-#profileChip .bats{color:var(--amber); font-weight:800; margin-left:6px;}
-#storageBanner{background:#3a2b12;color:#ffd88a;font-size:13px;padding:10px 14px;border-bottom:1px solid #5c4a1f;line-height:1.45;}
-#storageBanner[hidden]{display:none;}
-main{flex:1; display:flex; flex-direction:column; min-height:0; position:relative;}
-#stage{flex:1; position:relative; background:#000; min-height:0; overflow:hidden;}
-#zoomBtn{
-  position:absolute; bottom:12px; left:50%; transform:translateX(-50%); z-index:4;
-  background:rgba(0,0,0,.55); color:#fff; border:1px solid var(--line);
-  border-radius:999px; padding:8px 18px; font-size:14px; font-weight:700;
-}
-#liveView{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#000;}
-#delayStage{position:absolute; inset:0; display:none;}
-#delayStage.on{display:block;}
-#delayStage video{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#000;}
-.overlay{
-  position:absolute; inset:0; display:flex; flex-direction:column; gap:14px;
-  align-items:center; justify-content:center; background:rgba(0,0,0,.72);
-  text-align:center; padding:24px; z-index:5;
-}
-.overlay[hidden]{display:none;}
-.overlay p{color:var(--dim); font-size:14px; line-height:1.5; margin:0; max-width:300px;}
-#startBtn{
-  background:var(--red); color:#fff; border:0; border-radius:16px;
-  font-size:20px; font-weight:800; padding:18px 42px;
-}
-#startBtn:disabled{opacity:.55;}
-#warmup{font-size:15px; color:var(--dim); letter-spacing:1px;}
-#warmup .dot{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--amber); margin-right:8px; animation:blink 1s infinite;}
-@keyframes blink{50%{opacity:.2;}}
-.warmup-inner{font-size:15px; letter-spacing:1px;}
-#recDot{
-  position:absolute; top:calc(env(safe-area-inset-top,0px) + 12px); left:14px; z-index:4;
-  display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--txt);
-  background:rgba(0,0,0,.55); padding:6px 10px; border-radius:999px;
-}
-#recDot[hidden]{display:none;}
-#recDot i{width:9px; height:9px; border-radius:50%; background:var(--red); animation:blink 1.2s infinite;}
-#camMode{
-  position:absolute; top:calc(env(safe-area-inset-top,0px) + 12px); right:14px; z-index:4;
-  font-size:12px; font-weight:700; color:var(--txt);
-  background:rgba(0,0,0,.55); padding:6px 10px; border-radius:999px;
-}
-#camMode[hidden]{display:none;}
-.controls{background:var(--panel); border-top:1px solid var(--line); padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 12px);}
-.crow{display:flex; align-items:center; gap:10px; margin-bottom:10px;}
-.crow:last-child{margin-bottom:0;}
-.clabel{font-size:13px; color:var(--dim); font-weight:600; min-width:52px;}
-#delayRange{flex:1; accent-color:var(--red); height:32px;}
-#delayVal{font-size:14px; font-weight:800; min-width:64px; text-align:right;}
-.seg{display:flex; background:#1c1c22; border:1px solid var(--line); border-radius:12px; overflow:hidden;}
-.seg button{
-  flex:1; background:transparent; border:0; color:var(--dim);
-  font-size:14px; font-weight:700; padding:11px 0;
-}
-.seg button.on{background:var(--red); color:#fff;}
-.tbtn{
-  background:#1c1c22; color:var(--txt); border:1px solid var(--line);
-  border-radius:12px; font-size:14px; font-weight:700; padding:11px 12px;
-}
-.tbtn.on{border-color:var(--green); color:var(--green);}
-#saveLenBtn{min-width:64px;}
-#saveBtn{
-  flex:1; background:var(--red); color:#fff; border:0; border-radius:14px;
-  font-size:19px; font-weight:800; padding:16px 0; letter-spacing:.5px;
-}
-#saveBtn:active{transform:scale(.98);}
-.navrow{display:flex; gap:10px;}
-.navrow .tbtn{flex:1;}
-section.page{flex:1; display:flex; flex-direction:column; min-height:0; background:var(--bg);}
-section.page[hidden]{display:none;}
-.pagehead{display:flex; align-items:center; justify-content:space-between; padding:14px; border-bottom:1px solid var(--line);}
-.pagehead h2{margin:0; font-size:18px;}
-.scroll{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:12px 14px 24px;}
-.card{
-  background:var(--panel); border:1px solid var(--line); border-radius:14px;
-  padding:13px 14px; margin-bottom:10px; display:flex; align-items:center; gap:10px;
-}
-.card .nm{flex:1; min-width:0;}
-.card .nm b{display:block; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-.card .nm small{color:var(--dim); font-size:12px;}
-.badge{
-  font-size:12px; font-weight:800; border-radius:8px; padding:4px 8px;
-  background:#1c1c22; border:1px solid var(--line); color:var(--amber);
-}
-.card.sel{border-color:var(--red);}
-.mini{
-  background:#1c1c22; color:var(--txt); border:1px solid var(--line);
-  border-radius:10px; font-size:13px; font-weight:700; padding:9px 11px;
-}
-.mini.danger{color:var(--red); border-color:#4a2226;}
-.mini.go{color:var(--green); border-color:#1d4030;}
-.addrow{display:flex; gap:8px; margin-top:6px;}
-.addrow input{
-  flex:1; background:#1c1c22; border:1px solid var(--line); color:var(--txt);
-  border-radius:12px; font-size:16px; padding:12px; font-family:inherit;
-}
-.addrow select{
-  background:#1c1c22; border:1px solid var(--line); color:var(--txt);
-  border-radius:12px; font-size:16px; padding:0 10px; font-family:inherit;
-}
-#addProfileBtn{background:var(--green); color:#fff; border:0; border-radius:12px; font-size:15px; font-weight:800; padding:0 18px;}
-.empty{color:var(--dim); text-align:center; padding:32px 20px; font-size:14px; line-height:1.6;}
-.verfoot{text-align:center; color:#3a3a42; font-size:11px; padding:18px 0 6px;}
-#playerModal{position:fixed; inset:0; background:rgba(0,0,0,.94); z-index:50; display:flex; flex-direction:column;}
-#playerModal[hidden]{display:none;}
-#player{flex:1; width:100%; background:#000; min-height:0;}
-.prow{display:flex; gap:8px; padding:12px 14px calc(env(safe-area-inset-bottom,0px) + 12px);}
-.prow .mini{flex:1; font-size:15px; padding:13px 0;}
-#toast{
-  position:fixed; left:50%; bottom:calc(env(safe-area-inset-bottom,0px) + 90px); transform:translateX(-50%) translateY(20px);
-  background:#232329; color:var(--txt); border:1px solid var(--line); border-radius:999px;
-  padding:11px 20px; font-size:14px; font-weight:600; opacity:0; pointer-events:none;
-  transition:opacity .25s, transform .25s; z-index:99; max-width:88%; text-align:center;
-}
-#toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
-</style>
+<meta name="theme-color" content="#0a0a0f"/>
+<title>SwingDelay</title>
+<link rel="manifest" href="manifest.webmanifest"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23e5484d'/%3E%3Ctext x='50' y='66' font-size='44' font-family='Arial' font-weight='bold' fill='white' text-anchor='middle'%3ESD%3C/text%3E%3C/svg%3E"/>
+<link rel="apple-touch-icon" href="icon-180.png"/>
+<link rel="stylesheet" href="styles.css"/>
 </head>
 <body>
+<div id="app">
 
-<header class="topbar">
-  <h1>SWING<span>DELAY</span></h1>
-  <button id="profileChip" type="button">No hitter ▾</button>
-</header>
-<div id="storageBanner" hidden>⚠️ <b>Saving is blocked in this browser</b> — hitters and videos can't be saved here.<br><span style="font-size:12px">Fix: open this link in Safari (not inside another app). Also check Settings → Apps → Safari → "Block All Cookies" is OFF. <span id="storageErr"></span></span></div>
-
-<main id="viewCamera">
-  <div id="stage">
-    <video id="liveView" muted playsinline style="display:none"></video>
-    <div id="delayStage">
-      <video id="dpA" muted playsinline preload="auto" style="opacity:0"></video>
-      <video id="dpB" muted playsinline preload="auto" style="opacity:0"></video>
+  <!-- SETUP: shown when Supabase is not configured -->
+  <section id="screen-setup" class="screen" hidden>
+    <div class="wrap narrow">
+      <h1 class="logo">SWING<span>DELAY</span></h1>
+      <h2>One-time setup</h2>
+      <p class="dim">SwingDelay stores accounts and videos in the cloud (Supabase). Paste your project keys once — they're saved on this device.</p>
+      <ol class="steps">
+        <li>Create a free project at <b>supabase.com</b>.</li>
+        <li>In the SQL editor, run <b>supabase/schema.sql</b> from the app repo.</li>
+        <li>Copy your <b>Project URL</b> and <b>anon key</b> (Project Settings → API) below.</li>
+      </ol>
+      <label class="field"><span>Project URL</span><input id="setupUrl" type="url" placeholder="https://xyz.supabase.co" autocomplete="off"/></label>
+      <label class="field"><span>Anon key</span><input id="setupKey" type="text" placeholder="eyJ..." autocomplete="off"/></label>
+      <button id="setupSave" class="btn primary big">Save &amp; continue</button>
     </div>
-    <div id="recDot" hidden><i></i>REC</div>
-    <div id="camMode" hidden></div>
-    <button id="zoomBtn" type="button">1×</button>
-    <div id="warmup" class="overlay" hidden><div class="warmup-inner"><span class="dot"></span>BUFFERING…</div></div>
-    <div id="startOverlay" class="overlay">
-      <button id="startBtn" type="button">Start Camera</button>
-      <p>Point the phone at the cage. The screen replays each swing on a delay so hitters can watch right after they hit.</p>
-      <p style="font-size:12px">Use this in Safari — the iPhone camera doesn't work from a full-screen home-screen icon.</p>
-      <div id="camError" hidden style="background:#2a1215;border:1px solid #5c2228;border-radius:14px;padding:14px;max-width:330px">
-        <b style="color:#ff8589">Camera unavailable</b>
-        <p id="camErrorText" style="margin:8px 0 12px"></p>
-        <button id="copyLinkBtn" type="button" class="tbtn">Copy app link</button>
+  </section>
+
+  <!-- AUTH -->
+  <section id="screen-auth" class="screen" hidden>
+    <div class="wrap narrow">
+      <h1 class="logo">SWING<span>DELAY</span></h1>
+      <div class="seg" id="authTabs">
+        <button type="button" data-tab="login" class="on">Log in</button>
+        <button type="button" data-tab="signup">Sign up</button>
+      </div>
+      <div id="authLogin">
+        <label class="field"><span>Email</span><input id="loginEmail" type="email" autocomplete="email"/></label>
+        <label class="field"><span>Password</span><input id="loginPass" type="password" autocomplete="current-password"/></label>
+        <button id="loginBtn" class="btn primary big">Log in</button>
+      </div>
+      <div id="authSignup" hidden>
+        <label class="field"><span>Your name</span><input id="suName" type="text" autocomplete="name"/></label>
+        <label class="field"><span>Email</span><input id="suEmail" type="email" autocomplete="email"/></label>
+        <label class="field"><span>Password</span><input id="suPass" type="password" autocomplete="new-password"/></label>
+        <label class="field"><span>I am a…</span>
+          <select id="suRole"><option value="coach">Coach</option><option value="hitter">Hitter</option></select>
+        </label>
+        <label class="field" id="inviteWrap" hidden><span>Invite code (from your coach)</span><input id="suCode" type="text" placeholder="SD-XXXXXX" autocomplete="off"/></label>
+        <button id="signupBtn" class="btn primary big">Create account</button>
+      </div>
+      <p id="authErr" class="err" hidden></p>
+    </div>
+  </section>
+
+  <!-- ROSTER (coach) -->
+  <section id="screen-roster" class="screen" hidden>
+    <header class="topbar"><h1 class="logo sm">SWING<span>DELAY</span></h1><button id="rosterSignout" class="btn ghost sm">Sign out</button></header>
+    <div class="wrap">
+      <div class="rowhead"><h2>Roster</h2><button id="addHitterBtn" class="btn primary sm">+ Add hitter</button></div>
+      <div id="hitterForm" class="card form" hidden>
+        <label class="field"><span>Name</span><input id="nhName" type="text" placeholder="Hitter name" maxlength="40"/></label>
+        <label class="field"><span>Bats</span><select id="nhBats"><option value="R">R</option><option value="L">L</option><option value="S">S</option></select></label>
+        <button id="nhSave" class="btn primary">Create hitter</button>
+      </div>
+      <div id="inviteCard" class="card invite" hidden>
+        <div><b id="inviteName"></b> — share this invite code:</div>
+        <div class="code" id="inviteCode"></div>
+        <button id="inviteCopy" class="btn sm">Copy code</button>
+        <button id="inviteDone" class="btn ghost sm">Done</button>
+      </div>
+      <div id="rosterList"></div>
+    </div>
+  </section>
+
+  <!-- CAMERA -->
+  <section id="screen-camera" class="screen" hidden>
+    <header class="topbar">
+      <button id="camBack" class="btn ghost sm">←</button>
+      <button id="camHitterChip" class="chip">Pick hitter ▾</button>
+    </header>
+    <div id="stage">
+      <video id="liveView" muted playsinline style="display:none"></video>
+      <div id="delayStage" style="display:none">
+        <video id="dpA" muted playsinline preload="auto"></video>
+        <video id="dpB" muted playsinline preload="auto"></video>
+      </div>
+      <div id="recDot" hidden><i></i>REC</div>
+      <div id="camMode" hidden></div>
+      <div id="warmup" class="overlay" hidden><div class="warmup-inner"><span class="dot"></span>BUFFERING…</div></div>
+      <div id="poseBadge" hidden>POSE</div>
+      <div id="startOverlay" class="overlay">
+        <button id="startBtn" class="btn primary big">Start Camera</button>
+        <p class="dim">Point the phone at the hitter. The screen replays each swing on a delay.</p>
+        <div id="camError" hidden class="errbox"><b>Camera unavailable</b><p id="camErrorText"></p></div>
       </div>
     </div>
-  </div>
-  <div class="controls">
-    <div class="crow">
-      <span class="clabel">Delay</span>
-      <input id="delayRange" type="range" min="2" max="120" step="1" value="8"/>
-      <span id="delayVal">8s</span>
-    </div>
-    <div class="crow" style="gap:6px">
-      <button type="button" class="tbtn preset" data-d="8" style="flex:1">8s</button>
-      <button type="button" class="tbtn preset" data-d="15" style="flex:1">15s</button>
-      <button type="button" class="tbtn preset" data-d="30" style="flex:1">30s</button>
-      <button type="button" class="tbtn preset" data-d="60" style="flex:1">1m</button>
-      <button type="button" class="tbtn preset" data-d="120" style="flex:1">2m</button>
-    </div>
-    <div class="crow">
-      <div class="seg" style="flex:1">
-        <button id="modeDelay" type="button" class="on">Delay</button>
-        <button id="modeLive" type="button">Live</button>
+    <div class="controls">
+      <div class="crow"><span class="clabel">Delay</span><input id="delayRange" type="range" min="1" max="30" step="1" value="5"/><span id="delayVal">5s</span></div>
+      <div class="crow">
+        <div class="seg" style="flex:1"><button id="modeDelay" type="button" class="on">Delay</button><button id="modeLive" type="button">Live</button></div>
+        <button id="camSwitch" class="tbtn">🤳 Front</button>
       </div>
-      <button id="camSwitch" type="button" class="tbtn">🤳 Front</button>
-      <button id="mirrorBtn" type="button" class="tbtn">🪞 Mirror: Off</button>
+      <div class="crow">
+        <button id="saveClipBtn" class="btn primary big" style="flex:1">● SAVE CLIP</button>
+      </div>
+      <div class="crow">
+        <button id="autoClipBtn" class="tbtn on" style="flex:1">✂️ Auto-clip: On</button>
+        <button id="sensBtn" class="tbtn">Sensitivity: Med</button>
+      </div>
+      <p class="hint">Front camera shows true left/right — a lefty looks left-handed.</p>
     </div>
-    <div class="crow">
-      <button id="saveLenBtn" type="button" class="tbtn">⏱ 10s</button>
-      <button id="saveBtn" type="button">● SAVE SWING</button>
-    </div>
-    <div class="crow">
-      <button id="autoClipBtn" type="button" class="tbtn" style="flex:1">✂️ Auto-clip: On</button>
-      <button id="sensBtn" type="button" class="tbtn">Sensitivity: Med</button>
-      <button id="qualityBtn" type="button" class="tbtn">Quality: Med</button>
-    </div>
-    <div class="crow navrow">
-      <button id="navHitters" type="button" class="tbtn">👥 Hitters</button>
-      <button id="navSwings" type="button" class="tbtn">🎞 Swings</button>
-    </div>
-  </div>
-</main>
+  </section>
 
-<section id="viewProfiles" class="page" hidden>
-  <div class="pagehead"><h2>Hitters</h2><button id="backFromProfiles" type="button" class="mini">← Camera</button></div>
-  <div class="scroll">
-    <div id="profileList"></div>
-    <div class="addrow">
-      <input id="newName" type="text" placeholder="Hitter name" autocomplete="off" maxlength="40"/>
-      <select id="newBats"><option value="R">R</option><option value="L">L</option><option value="S">S</option></select>
-      <button id="addProfileBtn" type="button">Add</button>
+  <!-- LIBRARY -->
+  <section id="screen-library" class="screen" hidden>
+    <header class="topbar"><button id="libBack" class="btn ghost sm">←</button><h2 id="libTitle">Swings</h2><span></span></header>
+    <div class="wrap">
+      <div class="crow filters" id="tagFilters">
+        <button class="tbtn f on" data-f="all">All</button>
+        <button class="tbtn f" data-f="Good">Good</button>
+        <button class="tbtn f" data-f="Bad">Bad</button>
+        <button class="tbtn f" data-f="Needs Work">Needs Work</button>
+        <button class="tbtn f" data-f="fav">★ Fav</button>
+      </div>
+      <div id="swingGrid" class="grid"></div>
     </div>
-    <div class="verfoot">Swing Delay v8</div>
-  </div>
-</section>
+  </section>
 
-<section id="viewSwings" class="page" hidden>
-  <div class="pagehead"><h2 id="swingsTitle">Swings</h2><button id="backFromSwings" type="button" class="mini">← Camera</button></div>
-  <div class="scroll"><div id="swingList"></div></div>
-</section>
+  <!-- SWING DETAIL -->
+  <section id="screen-detail" class="screen" hidden>
+    <header class="topbar"><button id="detBack" class="btn ghost sm">←</button><h2 id="detTitle">Swing</h2><button id="detFav" class="btn ghost sm">☆</button></header>
+    <div class="wrap">
+      <video id="detVideo" controls playsinline preload="metadata"></video>
+      <div class="crow">
+        <div class="seg" id="rateSeg" style="flex:1">
+          <button type="button" data-r="0.25">0.25×</button>
+          <button type="button" data-r="0.5">0.5×</button>
+          <button type="button" data-r="1" class="on">1×</button>
+        </div>
+        <button id="frameBack" class="tbtn">⏮</button>
+        <button id="frameFwd" class="tbtn">⏭</button>
+      </div>
+      <div class="crow"><input id="scrub" type="range" min="0" max="1000" value="0" style="flex:1"/><span id="scrubT" class="dim sm">0.0s</span></div>
+      <h3>Tags</h3>
+      <div class="crow" id="tagRow">
+        <button class="tbtn tag" data-t="Good">Good</button>
+        <button class="tbtn tag" data-t="Bad">Bad</button>
+        <button class="tbtn tag" data-t="Needs Work">Needs Work</button>
+      </div>
+      <div class="crow">
+        <input id="customTag" type="text" placeholder="Custom tag…" maxlength="24" style="flex:1"/>
+        <button id="customTagBtn" class="tbtn">Add</button>
+      </div>
+      <div id="tagList" class="tags"></div>
+      <h3>Note</h3>
+      <textarea id="detNote" rows="2" placeholder="Add a note…"></textarea>
+      <button id="noteSave" class="btn sm">Save note</button>
+      <div class="crow" style="margin-top:14px">
+        <button id="detDownload" class="tbtn" style="flex:1">⤓ Download</button>
+        <button id="detShare" class="tbtn" style="flex:1">↗ Share</button>
+        <button id="detDelete" class="tbtn danger" style="flex:1">Delete</button>
+      </div>
+    </div>
+  </section>
 
-<div id="playerModal" hidden>
-  <video id="player" controls playsinline preload="metadata"></video>
-  <div class="prow">
-    <button id="shareSwingBtn" type="button" class="mini go">Share</button>
-    <button id="dlSwingBtn" type="button" class="mini">Download</button>
-    <button id="delSwingBtn" type="button" class="mini danger">Delete</button>
-    <button id="closePlayerBtn" type="button" class="mini">Close</button>
-  </div>
+  <div id="toast"></div>
+  <video id="src" muted playsinline style="display:none"></video>
 </div>
-
-<div id="toast"></div>
-<video id="src" muted playsinline style="display:none"></video>
-
 <script>
-'use strict';
-/* ================= helpers ================= */
-const $ = (id) => document.getElementById(id);
-function toast(msg){
-  const t = $('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove('show'), 2400);
-}
-function fmtDate(ts){
-  const d = new Date(ts);
-  return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' +
-         d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
-}
-function fileStamp(ts){
-  const d = new Date(ts), p = (n) => String(n).padStart(2,'0');
-  return d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes());
-}
-function fmtDelay(s){
-  s = Math.round(s);
-  if (s < 60) return s + 's';
-  const m = Math.floor(s / 60), r = s % 60;
-  return r ? (m + 'm ' + r + 's') : (m + 'm');
-}
-function safeName(s){ return ((s || 'hitter').replace(/[^\w\-]+/g,'').slice(0,24) || 'hitter'); }
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-/* ================= prefs ================= */
-const DEFAULT_PREFS = { delay:8, mode:'delay', saveLen:10, facing:'user', flip:{user:false,environment:false}, profileId:null, autoClip:true, sens:'med', quality:'med', zoom:1 };
-let prefs = Object.assign({}, DEFAULT_PREFS);
-try {
-  const raw = localStorage.getItem('swingdelay-prefs');
-  if (raw) prefs = Object.assign({}, DEFAULT_PREFS, JSON.parse(raw));
-} catch(e){}
-if (!prefs.flip || typeof prefs.flip !== 'object') prefs.flip = {user:false, environment:false};
-function savePrefs(){ try { localStorage.setItem('swingdelay-prefs', JSON.stringify(prefs)); } catch(e){} }
-function flipOn(){ return !!(prefs.flip && prefs.flip[prefs.facing]); }
-
-/* ================= IndexedDB ================= */
-let db = null, storageOK = true, storageErrMsg = '';
-function openDB(){
-  return new Promise((resolve, reject) => {
-    if (!window.indexedDB){ reject(new Error('indexedDB missing')); return; }
-    const req = indexedDB.open('swing-delay-db', 1);
-    req.onupgradeneeded = (e) => {
-      const d = e.target.result;
-      d.createObjectStore('profiles', {keyPath:'id', autoIncrement:true});
-      const s = d.createObjectStore('swings', {keyPath:'id', autoIncrement:true});
-      s.createIndex('byProfile', 'profileId', {unique:false});
-    };
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror = () => reject(req.error || new Error('open failed'));
-    setTimeout(() => reject(new Error('open timed out')), 8000);
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
   });
 }
-function idb(store, mode, fn){
-  return new Promise((resolve, reject) => {
-    if (!db){ reject(new Error('storage unavailable')); return; }
-    let req;
-    try { req = fn(db.transaction(store, mode).objectStore(store)); }
-    catch(err){ reject(err); return; }
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-const Profiles = {
-  all: () => idb('profiles','readonly',(s) => s.getAll()),
-  add: (p) => idb('profiles','readwrite',(s) => s.add(p)),
-  del: (id) => idb('profiles','readwrite',(s) => s.delete(id))
-};
-const Swings = {
-  byProfile: (pid) => idb('swings','readonly',(s) => s.index('byProfile').getAll(pid)),
-  get: (id) => idb('swings','readonly',(s) => s.get(id)),
-  add: (sw) => idb('swings','readwrite',(s) => s.add(sw)),
-  del: (id) => idb('swings','readwrite',(s) => s.delete(id))
-};
-function showStorageError(msg){
-  storageOK = false;
-  storageErrMsg = msg || '';
-  $('storageBanner').hidden = false;
-  if (storageErrMsg) $('storageErr').textContent = '(' + storageErrMsg + ')';
-}
-
-/* ================= elements & state ================= */
-const src = $('src'), liveView = $('liveView'), delayStage = $('delayStage');
-const dpEls = { A: $('dpA'), B: $('dpB') };
-const capCanvas = document.createElement('canvas');   // small frames for motion detection
-let stream = null, camReady = false, starting = false;
-let capTimer = null, rafId = 0, dpTimer = null, recLastT = 0, viewTick = 0;
-
-/* Recording quality presets. Med (1080p60) is the safe default — High (4K60)
-   is heavy and can stutter on some phones. */
-const QUALITY = {
-  high: {label:'High', reqW:3840, reqH:2160, reqF:60, maxDim:4096, fps:60, maxBps:30000000, loopMs:16},
-  med:  {label:'Med',  reqW:1920, reqH:1080,  reqF:60, maxDim:1920,  fps:60, maxBps:16000000, loopMs:16},
-  low:  {label:'Low',  reqW:1280, reqH:720,   reqF:30, maxDim:960,   fps:30, maxBps:6000000,  loopMs:33}
-};
-function qual(){ return QUALITY[prefs.quality] || QUALITY.med; }
-/* View-recorder frame size: preserve the camera's aspect, capped so the
-   delay preview stays light. Computed BEFORE captureStream starts. */
-function viewSize(vw, vh){
-  const s = Math.min(1, 1280/Math.max(vw,vh), 720/Math.min(vw,vh));
-  return [Math.max(2, Math.round(vw*s/2)*2), Math.max(2, Math.round(vh*s/2)*2)];
-}
-/* Two recorders: viewR (720p30, 130s ring) feeds the smooth delay-view player;
-   clipR (quality-sized, 25s ring) feeds saved clips. */
-function makeRec(){ return { canvas: document.createElement('canvas'), recorder: null, chunks: [], initChunk: null, mime: '', ext: 'mp4' }; }
-const viewR = makeRec(), clipR = makeRec();
-
-/* Draw the camera frame corrected for the mirror setting (true orientation by default).
-   zoom > 1 crops into the center, which cuts the front camera's wide-angle warp. */
-function drawCorrected(ctx, w, h, flip, zoom){
-  const vw = src.videoWidth, vh = src.videoHeight;
-  if (!vw || !vh || src.readyState < 2) return false;
-  const s = Math.max(w/vw, h/vh) * (zoom || 1), dw = vw*s, dh = vh*s;
-  const dx = (w-dw)/2, dy = (h-dh)/2;
-  ctx.save();
-  if (flip){ ctx.translate(w, 0); ctx.scale(-1, 1); }
-  ctx.drawImage(src, dx, dy, dw, dh);
-  ctx.restore();
-  return true;
-}
-
-/* ================= swing auto-detection ================= */
-const MOTION_W = 48, MOTION_H = 27;
-const motionCanvas = document.createElement('canvas');
-motionCanvas.width = MOTION_W; motionCanvas.height = MOTION_H;
-const motionCtx = motionCanvas.getContext('2d', {willReadFrequently:true});
-let prevMotion = null, consecHigh = 0, consecLow = 0;
-let swingState = 'idle', swingStartWall = 0, lastClipAt = 0;
-const SENS = {
-  low:  {start:0.16, end:0.050, label:'Low'},
-  med:  {start:0.10, end:0.040, label:'Med'},
-  high: {start:0.06, end:0.030, label:'High'}
-};
-function resetSwingDetect(){ swingState = 'idle'; consecHigh = 0; consecLow = 0; prevMotion = null; }
-function motionScore(){
-  motionCtx.drawImage(capCanvas, 0, 0, MOTION_W, MOTION_H);
-  let d;
-  try { d = motionCtx.getImageData(0, 0, MOTION_W, MOTION_H).data; }
-  catch(e){ return 0; }
-  if (!prevMotion){ prevMotion = new Uint8ClampedArray(d.length); prevMotion.set(d); return 0; }
-  let sum = 0;
-  const n = MOTION_W * MOTION_H;
-  for (let i = 0; i < d.length; i += 4){
-    const g = (d[i] + d[i+1] + d[i+2]) / 3;
-    const pg = (prevMotion[i] + prevMotion[i+1] + prevMotion[i+2]) / 3;
-    sum += Math.abs(g - pg);
-  }
-  prevMotion.set(d);
-  return sum / n / 255;
-}
-function updateSwingDetect(score){
-  const now = Date.now();
-  if (!prefs.autoClip || !prefs.profileId || !camReady){ resetSwingDetect(); return; }
-  if (now - lastClipAt < 5000){ resetSwingDetect(); return; }
-  const th = SENS[prefs.sens] || SENS.med;
-  if (swingState === 'idle'){
-    consecHigh = (score > th.start) ? consecHigh + 1 : 0;
-    if (consecHigh >= 3){ swingState = 'swinging'; swingStartWall = now; consecLow = 0; }
-  } else {
-    consecLow = (score < th.end) ? consecLow + 1 : 0;
-    const dur = now - swingStartWall;
-    if ((consecLow >= 8 && dur > 800) || dur > 6000) finishAutoClip(now);
-  }
-}
-function finishAutoClip(now){
-  resetSwingDetect();
-  lastClipAt = now;
-  let t0 = swingStartWall - 1200, t1 = now + 600;
-  if (t1 - t0 < 2000) t1 = t0 + 2000;
-  const blob = extractClip(clipR, t0, t1);
-  if (!blob) return;
-  const dur = Math.round((t1 - t0) / 1000);
-  Swings.add({profileId: prefs.profileId, ts: Date.now(), dur: dur, mime: clipR.mime, blob: blob}).then(() => {
-    toast('Auto-clipped swing ✓');
-    if (!$('viewSwings').hidden) renderSwings();
-  }).catch(() => {});
-}
-function captureFrame(){
-  if (!camReady || src.readyState < 2) return;
-  const vw = src.videoWidth, vh = src.videoHeight;
-  if (!vw || !vh) return;
-  const W = 320, H = Math.round(W * vh / vw);
-  if (capCanvas.width !== W || capCanvas.height !== H){ capCanvas.width = W; capCanvas.height = H; }
-  if (!drawCorrected(capCanvas.getContext('2d'), W, H, flipOn())) return;
-  updateSwingDetect(motionScore());
-}
-
-/* ================= recorders ================= */
-function pickMime(){
-  if (!window.MediaRecorder) return '';
-  const cands = ['video/mp4;codecs="hvc1.1.6.L153.B0"','video/mp4;codecs="avc1.640034,mp4a.40.2"','video/mp4;codecs="avc1.42E01E,mp4a.40.2"','video/mp4','video/webm;codecs=vp9','video/webm'];
-  for (const m of cands){ try { if (MediaRecorder.isTypeSupported(m)) return m; } catch(e){} }
-  return '';
-}
-function pickClipBitrate(maxBps){
-  let w = 1280, h = 720, fps = 30;
-  try {
-    const t = stream && stream.getVideoTracks()[0];
-    const s = t && t.getSettings ? t.getSettings() : {};
-    if (s.width){ w = s.width; h = s.height || w; }
-    if (s.frameRate) fps = s.frameRate;
-  } catch(e){}
-  return Math.min(maxBps, Math.max(4000000, Math.round(w * h * fps * 0.12)));
-}
-function startRecorder(rec, opts){
-  stopRecorder(rec);
-  rec.mime = pickMime();
-  if (!rec.mime){ toast('This browser cannot record video.'); return false; }
-  rec.ext = rec.mime.indexOf('mp4') >= 0 ? 'mp4' : 'webm';
-  rec.chunks = []; rec.initChunk = null;
-  const c = rec.canvas;
-  if (c.width !== opts.w || c.height !== opts.h){ c.width = opts.w; c.height = opts.h; }
-  let rs = null;
-  try { rs = c.captureStream(opts.fps); } catch(e){ return false; }
-  try {
-    rec.recorder = new MediaRecorder(rs, {mimeType: rec.mime, videoBitsPerSecond: opts.bps});
-  } catch(e){ return false; }
-  rec.recorder.ondataavailable = (e) => {
-    if (e.data && e.data.size > 0){
-      if (!rec.initChunk) rec.initChunk = e.data;
-      rec.chunks.push({blob: e.data, t: Date.now()});
-      const cut = Date.now() - opts.keepMs;
-      while (rec.chunks.length && rec.chunks[0].t < cut) rec.chunks.shift();
-    }
-  };
-  rec.recorder.onerror = () => {};
-  try { rec.recorder.start(1000); } catch(e){ return false; }
-  return true;
-}
-function stopRecorder(rec){
-  if (rec.recorder && rec.recorder.state !== 'inactive'){ try { rec.recorder.stop(); } catch(e){} }
-  rec.recorder = null;
-}
-/* A clip is the init segment + every chunk overlapping [t0, t1]. */
-function extractClip(rec, t0, t1){
-  if (!rec.recorder || !rec.initChunk || rec.chunks.length < 3) return null;
-  const segs = rec.chunks.filter((c) => {
-    if (c.blob === rec.initChunk) return false;
-    const cs = c.t - 1000, ce = c.t;
-    return cs <= t1 && ce >= t0;
-  }).map((c) => c.blob);
-  if (!segs.length) return null;
-  return new Blob([rec.initChunk].concat(segs), {type: rec.mime});
-}
-async function saveSwing(){
-  if (!prefs.profileId){ toast('Pick a hitter first.'); showView('profiles'); return; }
-  const now = Date.now();
-  const blob = extractClip(clipR, now - prefs.saveLen*1000, now);
-  if (!blob){ toast('Still rolling — try again in a few seconds.'); return; }
-  try {
-    await Swings.add({profileId: prefs.profileId, ts: Date.now(), dur: prefs.saveLen, mime: clipR.mime, blob: blob});
-  } catch(e){ toast('Save failed — storage may be full or blocked.'); return; }
-  let p = null;
-  try { p = await getProfile(prefs.profileId); } catch(e){}
-  toast('Saved to ' + (p ? p.name : 'hitter'));
-  if (!$('viewSwings').hidden) renderSwings();
-}
-
-/* ================= delay player (ping-pong preloaded chunks) =================
-   Plays viewR's 1s chunks through two stacked video elements for smooth,
-   hardware-decoded delay playback at any delay from 2s to 2min. */
-let dpShowing = 'A', dpCurT = -1, dpUrls = {A:null, B:null}, dpLoadedT = {A:-1, B:-1}, dpLastTick = 0;
-function dpEl(n){ return dpEls[n]; }
-function dpRevoke(n){
-  if (dpUrls[n]){ try { URL.revokeObjectURL(dpUrls[n]); } catch(e){} dpUrls[n] = null; }
-  dpLoadedT[n] = -1;
-}
-function dpPrepare(name, t){
-  if (dpLoadedT[name] === t) return true;
-  const c = viewR.chunks.find((x) => x.t === t && x.blob !== viewR.initChunk);
-  if (!c || !viewR.initChunk) return false;
-  dpRevoke(name);
-  dpUrls[name] = URL.createObjectURL(new Blob([viewR.initChunk, c.blob], {type: viewR.mime}));
-  dpLoadedT[name] = t;
-  const el = dpEl(name);
-  el.preload = 'auto';
-  el.src = dpUrls[name];
-  try { el.load(); } catch(e){}
-  return true;
-}
-function dpShow(name, t, offset){
-  const other = name === 'A' ? 'B' : 'A';
-  const el = dpEl(name), hideEl = dpEl(other);
-  const doShow = () => {
-    try { el.currentTime = Math.min(0.94, Math.max(0, offset || 0)); } catch(e){}
-    el.style.opacity = '1'; hideEl.style.opacity = '0';
-    try { const pr = el.play(); if (pr && pr.catch) pr.catch(() => {}); } catch(e){}
-    dpShowing = name; dpCurT = t;
-    const nxt = dpNextChunkT(t);
-    if (nxt) dpPrepare(other, nxt);
-  };
-  if (dpLoadedT[name] === t && el.readyState >= 1){ doShow(); }
-  else {
-    if (!dpPrepare(name, t)) return;
-    const onMeta = () => { el.removeEventListener('loadedmetadata', onMeta); doShow(); };
-    el.addEventListener('loadedmetadata', onMeta);
-  }
-}
-function dpNextChunkT(t){
-  let best = null, bestD = 1e9;
-  for (const c of viewR.chunks){
-    if (c.blob === viewR.initChunk) continue;
-    const d = c.t - t;
-    if (d > 200 && d < bestD){ bestD = d; best = c; }
-  }
-  return best ? best.t : null;
-}
-function dpChunkFor(target){
-  for (let i = viewR.chunks.length - 1; i >= 0; i--){
-    const c = viewR.chunks[i];
-    if (c.blob === viewR.initChunk) continue;
-    if (c.t - 1000 <= target) return c;
-  }
-  return null;
-}
-function dpWatchdog(){
-  if (!camReady || prefs.mode !== 'delay') return;
-  if (!viewR.initChunk || viewR.chunks.length < 3){ $('warmup').hidden = false; return; }
-  const target = Date.now() - prefs.delay * 1000;
-  const c = dpChunkFor(target);
-  if (!c){ $('warmup').hidden = false; return; }
-  $('warmup').hidden = true;
-  const offset = Math.min(0.94, Math.max(0, (target - (c.t - 1000)) / 1000));
-  if (c.t === dpCurT){
-    const el = dpEl(dpShowing);
-    if (el.paused){ try { const pr = el.play(); if (pr && pr.catch) pr.catch(() => {}); } catch(e){} }
-    else {
-      try {
-        if (el.readyState >= 1 && Math.abs(el.currentTime - offset) > 0.6) el.currentTime = offset;
-      } catch(e){}
-    }
-    return;
-  }
-  dpShow(dpShowing === 'A' ? 'B' : 'A', c.t, offset);
-}
-function dpOnEnded(name){
-  if (!camReady || prefs.mode !== 'delay') return;
-  const nxt = dpNextChunkT(dpCurT);
-  if (nxt) dpShow(name === 'A' ? 'B' : 'A', nxt, 0);
-}
-function dpHide(){
-  ['A','B'].forEach((n) => {
-    const el = dpEl(n);
-    try { el.pause(); } catch(e){}
-    el.removeAttribute('src'); try { el.load(); } catch(e){}
-    dpRevoke(n);
-    el.style.opacity = '0';
-  });
-  dpCurT = -1; dpShowing = 'A';
-  delayStage.classList.remove('on');
-}
-
-/* ================= camera ================= */
-function showCamError(kind){
-  const box = $('camError'), txt = $('camErrorText');
-  let msg;
-  if (kind === 'standalone'){
-    msg = 'You opened the old full-screen icon, and Apple blocks the iPhone camera in those. Delete this icon from your home screen, then open the app link in Safari (or add it to your home screen again — the new icon opens in Safari, where the camera works).';
-  } else if (kind === 'noapi'){
-    msg = 'This browser can\u2019t reach the camera. Open the app link in Safari on your iPhone and tap Start Camera there.';
-  } else if (kind === 'NotAllowedError' || kind === 'SecurityError'){
-    msg = 'Camera permission was blocked. In Safari, tap the aA button in the address bar \u2192 Website Settings \u2192 Camera \u2192 Allow, then tap Start Camera again.';
-  } else if (kind === 'NotFoundError' || kind === 'OverconstrainedError'){
-    msg = 'No camera was found on this device (' + kind + ').';
-  } else {
-    msg = 'The camera didn\u2019t start (' + (kind || 'unknown error') + '). Try opening the app link in Safari.';
-  }
-  txt.textContent = msg;
-  box.hidden = false;
-}
-function hideCamError(){ $('camError').hidden = true; }
-function updateStage(){
-  const delayMode = prefs.mode === 'delay';
-  liveView.style.display = (camReady && !delayMode) ? 'block' : 'none';
-  delayStage.classList.toggle('on', !!(camReady && delayMode));
-  if (!camReady || !delayMode) dpHide();
-}
-async function startCamera(){
-  if (starting) return;
-  hideCamError();
-  if (window.navigator.standalone === true){ showCamError('standalone'); return; }
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ showCamError('noapi'); return; }
-  starting = true;
-  const btn = $('startBtn');
-  btn.disabled = true; btn.textContent = 'Starting…';
-  stopCamera();
-  const q = qual();
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {facingMode: prefs.facing, width:{ideal:q.reqW}, height:{ideal:q.reqH}, frameRate:{ideal:q.reqF}},
-      audio: false
-    });
-  } catch(err){
-    starting = false;
-    btn.disabled = false; btn.textContent = 'Start Camera';
-    showCamError(err && err.name);
-    return;
-  }
-  src.srcObject = stream;
-  liveView.srcObject = stream;
-  try { await src.play(); } catch(e){}
-  try { await liveView.play(); } catch(e){}
-  camReady = true;
-  $('startOverlay').hidden = true;
-  $('recDot').hidden = false;
-  resetSwingDetect();
-  try {
-    const vs = stream.getVideoTracks()[0].getSettings();
-    const cm = $('camMode');
-    if (vs.width){ cm.textContent = vs.width + '×' + vs.height + ' @ ' + Math.round(vs.frameRate || 0) + 'fps'; cm.hidden = false; }
-  } catch(e){}
-  // view recorder: aspect-correct size set BEFORE captureStream (130s ring)
-  const svw = src.videoWidth || 1280, svh = src.videoHeight || 720;
-  const vsz = viewSize(svw, svh);
-  startRecorder(viewR, {w:vsz[0], h:vsz[1], fps:30, bps:8000000, keepMs:135000});
-  // clip recorder: quality-sized for saved swings (25s ring)
-  const vw = src.videoWidth || q.reqW, vh = src.videoHeight || q.reqH;
-  const sc = Math.min(1, q.maxDim / Math.max(vw, vh));
-  const cw = Math.max(2, Math.round(vw * sc / 2) * 2), ch = Math.max(2, Math.round(vh * sc / 2) * 2);
-  startRecorder(clipR, {w:cw, h:ch, fps:q.fps, bps:pickClipBitrate(q.maxBps), keepMs:25000});
-  capTimer = setInterval(captureFrame, 83);
-  cancelAnimationFrame(rafId);
-  recLastT = 0; viewTick = 0;
-  rafId = requestAnimationFrame(recLoop);
-  dpTimer = setInterval(dpWatchdog, 400);
-  updateStage();
-  starting = false;
-  btn.disabled = false; btn.textContent = 'Start Camera';
-}
-function stopCamera(){
-  camReady = false;
-  if (capTimer){ clearInterval(capTimer); capTimer = null; }
-  if (dpTimer){ clearInterval(dpTimer); dpTimer = null; }
-  cancelAnimationFrame(rafId);
-  stopRecorder(viewR); stopRecorder(clipR);
-  if (stream){ stream.getTracks().forEach((t) => { try { t.stop(); } catch(e){} }); stream = null; }
-  src.srcObject = null; liveView.srcObject = null;
-  resetSwingDetect();
-  dpHide();
-  $('startOverlay').hidden = false;
-  $('warmup').hidden = true;
-  $('recDot').hidden = true;
-  $('camMode').hidden = true;
-  updateStage();
-}
-/* Recording loop: redraw both recorder canvases from the live stream. */
-function recLoop(){
-  rafId = requestAnimationFrame(recLoop);
-  if (!camReady || src.readyState < 2) return;
-  const now = performance.now();
-  const loopMs = qual().loopMs;
-  if (now - recLastT < loopMs) return;
-  recLastT = now;
-  const flip = flipOn();
-  const z = prefs.zoom || 1;
-  const vw = src.videoWidth, vh = src.videoHeight;
-  if (vw && vh){
-    const cc = clipR.canvas;
-    drawCorrected(cc.getContext('2d'), cc.width, cc.height, flip, z);
-    if ((viewTick++ % 2) === 0){
-      const vc = viewR.canvas, vsz = viewSize(vw, vh);
-      if (vc.width !== vsz[0] || vc.height !== vsz[1]){ vc.width = vsz[0]; vc.height = vsz[1]; }
-      drawCorrected(vc.getContext('2d'), vsz[0], vsz[1], flip, z);
-    }
-  }
-}
-
-/* ================= profiles & swings UI ================= */
-async function getProfile(id){
-  const all = await Profiles.all();
-  for (const p of all) if (p.id === id) return p;
-  return null;
-}
-async function refreshChip(){
-  let p = null;
-  try { p = prefs.profileId ? await getProfile(prefs.profileId) : null; }
-  catch(e){}
-  $('profileChip').innerHTML = p ? (escapeHtml(p.name) + '<span class="bats">' + escapeHtml(p.bats||'') + '</span> ▾') : 'No hitter ▾';
-}
-const VIEWS = ['viewCamera','viewProfiles','viewSwings'];
-function showView(id){
-  VIEWS.forEach((v) => { $(v).hidden = (v !== id); });
-  if (id === 'viewProfiles') renderProfiles();
-  if (id === 'viewSwings') renderSwings();
-}
-async function renderProfiles(){
-  const list = $('profileList');
-  let profiles = [];
-  try { profiles = await Profiles.all(); } catch(e){}
-  if (!storageOK && !profiles.length){
-    list.innerHTML = '<div class="empty">⚠️ Saving is blocked in this browser — see the warning at the top.<br/>Hitters can\u2019t be saved until that\u2019s fixed.</div>';
-    return;
-  }
-  profiles.sort((a,b) => (a.name||'').localeCompare(b.name||''));
-  if (!profiles.length){ list.innerHTML = '<div class="empty">No hitters yet.<br/>Add your first hitter below.</div>'; return; }
-  const counts = {};
-  for (const p of profiles){
-    try { counts[p.id] = (await Swings.byProfile(p.id)).length; } catch(e){ counts[p.id] = 0; }
-  }
-  list.innerHTML = '';
-  profiles.forEach((p) => {
-    const card = document.createElement('div');
-    card.className = 'card' + (p.id === prefs.profileId ? ' sel' : '');
-    const nm = document.createElement('div'); nm.className = 'nm';
-    const b = document.createElement('b'); b.textContent = p.name;
-    const sm = document.createElement('small'); sm.textContent = (counts[p.id]||0) + ' saved swings';
-    nm.appendChild(b); nm.appendChild(sm);
-    const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = p.bats || '';
-    const sel = document.createElement('button'); sel.type='button'; sel.className='mini go'; sel.textContent='Select';
-    sel.onclick = async () => { prefs.profileId = p.id; savePrefs(); await refreshChip(); await renderProfiles(); toast(p.name + ' selected'); };
-    const vw = document.createElement('button'); vw.type='button'; vw.className='mini'; vw.textContent='Swings';
-    vw.onclick = async () => { prefs.profileId = p.id; savePrefs(); await refreshChip(); showView('swings'); };
-    const del = document.createElement('button'); del.type='button'; del.className='mini danger'; del.textContent='✕';
-    del.onclick = async () => {
-      if (!confirm('Delete ' + p.name + ' and all saved swings?')) return;
-      try {
-        const sws = await Swings.byProfile(p.id);
-        for (const s of sws){ try { await Swings.del(s.id); } catch(e){} }
-        await Profiles.del(p.id);
-      } catch(e){ toast('Couldn\u2019t delete — storage is blocked'); return; }
-      if (prefs.profileId === p.id){ prefs.profileId = null; savePrefs(); await refreshChip(); }
-      await renderProfiles();
-    };
-    card.appendChild(nm); card.appendChild(badge); card.appendChild(sel); card.appendChild(vw); card.appendChild(del);
-    list.appendChild(card);
-  });
-}
-async function renderSwings(){
-  const list = $('swingList');
-  let p = null;
-  try { p = prefs.profileId ? await getProfile(prefs.profileId) : null; } catch(e){}
-  $('swingsTitle').textContent = p ? ('Swings — ' + p.name) : 'Swings';
-  if (!p){ list.innerHTML = '<div class="empty">Pick a hitter first.</div>'; return; }
-  let sws = [];
-  try { sws = await Swings.byProfile(p.id); } catch(e){}
-  sws.sort((a,b) => b.ts - a.ts);
-  if (!sws.length){ list.innerHTML = '<div class="empty">No saved swings for ' + escapeHtml(p.name) + ' yet.<br/>Hit ● SAVE SWING on the camera screen after a swing.</div>'; return; }
-  list.innerHTML = '';
-  sws.forEach((s) => {
-    const card = document.createElement('div'); card.className = 'card';
-    const nm = document.createElement('div'); nm.className = 'nm';
-    const b = document.createElement('b'); b.textContent = fmtDate(s.ts);
-    const sm = document.createElement('small'); sm.textContent = 'last ' + (s.dur || '?') + 's • ' + ((s.mime||'').indexOf('mp4') >= 0 ? 'mp4' : 'webm');
-    nm.appendChild(b); nm.appendChild(sm);
-    const play = document.createElement('button'); play.type='button'; play.className='mini go'; play.textContent='Play';
-    play.onclick = () => openPlayer(s.id);
-    const dl = document.createElement('button'); dl.type='button'; dl.className='mini'; dl.textContent='⤓';
-    dl.onclick = () => downloadSwing(s.id);
-    const del = document.createElement('button'); del.type='button'; del.className='mini danger'; del.textContent='✕';
-    del.onclick = async () => { if (!confirm('Delete this swing?')) return; try { await Swings.del(s.id); } catch(e){ toast('Couldn\u2019t delete — storage is blocked'); return; } await renderSwings(); };
-    card.appendChild(nm); card.appendChild(play); card.appendChild(dl); card.appendChild(del);
-    list.appendChild(card);
-  });
-}
-
-/* ================= player modal ================= */
-let playerSwingId = null, playerUrl = null;
-async function openPlayer(id){
-  let s = null;
-  try { s = await Swings.get(id); } catch(e){}
-  if (!s){ toast('Swing not found.'); return; }
-  playerSwingId = id;
-  if (playerUrl){ try { URL.revokeObjectURL(playerUrl); } catch(e){} }
-  playerUrl = URL.createObjectURL(s.blob);
-  const v = $('player');
-  v.src = playerUrl;
-  $('playerModal').hidden = false;
-  try { await v.play(); } catch(e){}
-}
-function closePlayer(){
-  const v = $('player');
-  try { v.pause(); } catch(e){}
-  v.removeAttribute('src'); v.load();
-  if (playerUrl){ try { URL.revokeObjectURL(playerUrl); } catch(e){} playerUrl = null; }
-  playerSwingId = null;
-  $('playerModal').hidden = true;
-}
-async function swingFile(id){
-  let s = null, p = null;
-  try { s = await Swings.get(id); } catch(e){}
-  if (!s) return null;
-  try { p = await getProfile(s.profileId); } catch(e){}
-  const ext = (s.mime && s.mime.indexOf('mp4') >= 0) ? 'mp4' : 'webm';
-  const fname = 'Swing-' + safeName(p ? p.name : 'hitter') + '-' + fileStamp(s.ts) + '.' + ext;
-  return {blob: s.blob, mime: s.mime || 'video/mp4', fname: fname};
-}
-async function downloadSwing(id){
-  const f = await swingFile(id);
-  if (!f){ toast('Swing not found.'); return; }
-  const url = URL.createObjectURL(f.blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = f.fname;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => { try { URL.revokeObjectURL(url); } catch(e){} }, 8000);
-  toast('Downloading…');
-}
-async function shareSwing(id){
-  const f = await swingFile(id);
-  if (!f){ toast('Swing not found.'); return; }
-  try {
-    const file = new File([f.blob], f.fname, {type: f.mime});
-    if (navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({files:[file], title:'Swing video'});
-      return;
-    }
-  } catch(e){ return; }
-  toast('Sharing is not supported here — use Download.');
-}
-
-/* ================= wiring ================= */
-function syncControls(){
-  $('delayRange').value = Math.min(120, Math.max(2, prefs.delay));
-  $('delayVal').textContent = fmtDelay(prefs.delay);
-  $('modeDelay').classList.toggle('on', prefs.mode === 'delay');
-  $('modeLive').classList.toggle('on', prefs.mode === 'live');
-  $('camSwitch').textContent = prefs.facing === 'user' ? '🤳 Front' : '📷 Back';
-  $('mirrorBtn').textContent = '🪞 Mirror: ' + (flipOn() ? 'On' : 'Off');
-  $('mirrorBtn').classList.toggle('on', flipOn());
-  const z = prefs.zoom || 1;
-  $('liveView').style.transform = ((flipOn() ? 'scaleX(-1) ' : '') + (z !== 1 ? 'scale(' + z + ')' : '')).trim() || 'none';
-  $('zoomBtn').textContent = (z === 1 ? '1×' : z.toFixed(1) + '×');
-  $('saveLenBtn').textContent = '⏱ ' + prefs.saveLen + 's';
-  $('saveBtn').textContent = '● SAVE LAST ' + prefs.saveLen + 's';
-  $('autoClipBtn').textContent = '✂️ Auto-clip: ' + (prefs.autoClip ? 'On' : 'Off');
-  $('autoClipBtn').classList.toggle('on', !!prefs.autoClip);
-  $('sensBtn').textContent = 'Sensitivity: ' + ((SENS[prefs.sens] || SENS.med).label);
-  $('qualityBtn').textContent = 'Quality: ' + qual().label;
-  updateStage();
-}
-function wireControls(){
-  $('delayRange').addEventListener('input', (e) => { prefs.delay = parseInt(e.target.value,10) || 8; savePrefs(); syncControls(); });
-  document.querySelectorAll('.preset').forEach((b) => {
-    b.onclick = () => { prefs.delay = parseInt(b.dataset.d, 10) || 8; savePrefs(); syncControls(); };
-  });
-  dpEls.A.addEventListener('ended', () => dpOnEnded('A'));
-  dpEls.B.addEventListener('ended', () => dpOnEnded('B'));
-  dpEls.A.addEventListener('error', () => { if (dpShowing === 'A') dpCurT = -1; });
-  dpEls.B.addEventListener('error', () => { if (dpShowing === 'B') dpCurT = -1; });
-  $('modeDelay').onclick = () => { prefs.mode = 'delay'; savePrefs(); syncControls(); };
-  $('modeLive').onclick = () => { prefs.mode = 'live'; savePrefs(); syncControls(); };
-  $('camSwitch').onclick = async () => {
-    prefs.facing = prefs.facing === 'user' ? 'environment' : 'user';
-    savePrefs(); syncControls();
-    if (camReady) await startCamera();
-    toast(prefs.facing === 'user' ? 'Front camera' : 'Back camera');
-  };
-  $('mirrorBtn').onclick = () => {
-    prefs.flip[prefs.facing] = !flipOn();
-    savePrefs(); syncControls();
-    toast(flipOn() ? 'Mirror on — image flipped' : 'Mirror off — true orientation');
-  };
-  $('zoomBtn').onclick = () => {
-    const levels = [1, 1.3, 1.6, 2];
-    const i = levels.indexOf(prefs.zoom);
-    prefs.zoom = levels[(i + 1) % levels.length];
-    savePrefs(); syncControls();
-    toast('Zoom ' + $('zoomBtn').textContent);
-  };
-  const lens = [5,10,15];
-  $('saveLenBtn').onclick = () => {
-    const i = lens.indexOf(prefs.saveLen);
-    prefs.saveLen = lens[(i+1) % lens.length];
-    savePrefs(); syncControls();
-  };
-  $('startBtn').onclick = startCamera;
-  $('copyLinkBtn').onclick = async () => {
-    try { await navigator.clipboard.writeText(location.href); toast('Link copied — paste it in Safari'); }
-    catch(e){ toast('Copy failed — long-press the address bar to copy the link'); }
-  };
-  $('saveBtn').onclick = saveSwing;
-  $('autoClipBtn').onclick = () => {
-    prefs.autoClip = !prefs.autoClip; savePrefs(); syncControls(); resetSwingDetect();
-    toast(prefs.autoClip ? 'Auto-clip on — swings save themselves' : 'Auto-clip off');
-  };
-  $('sensBtn').onclick = () => {
-    const order = ['low','med','high'];
-    prefs.sens = order[(order.indexOf(prefs.sens) + 1) % order.length];
-    savePrefs(); syncControls(); resetSwingDetect();
-  };
-  $('qualityBtn').onclick = async () => {
-    const order = ['low','med','high'];
-    prefs.quality = order[(order.indexOf(prefs.quality) + 1) % order.length];
-    savePrefs(); syncControls();
-    toast('Quality: ' + qual().label + (prefs.quality === 'high' ? ' (4K — heavy)' : ''));
-    if (camReady) await startCamera();
-  };
-  $('profileChip').onclick = () => showView('profiles');
-  $('navHitters').onclick = () => showView('profiles');
-  $('navSwings').onclick = () => showView('swings');
-  $('backFromProfiles').onclick = () => showView('camera');
-  $('backFromSwings').onclick = () => showView('camera');
-  $('addProfileBtn').onclick = async () => {
-    const name = $('newName').value.trim();
-    if (!name){ toast('Type a hitter name first.'); return; }
-    if (!storageOK){ toast('Saving is blocked — see the warning at the top'); return; }
-    const bats = $('newBats').value;
-    try {
-      const id = await Profiles.add({name:name, bats:bats, ts:Date.now()});
-      $('newName').value = '';
-      prefs.profileId = id; savePrefs();
-      await refreshChip(); await renderProfiles();
-      toast(name + ' added');
-    } catch(e){ toast('Couldn\u2019t save the hitter — storage is blocked'); }
-  };
-  $('newName').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addProfileBtn').click(); });
-  $('closePlayerBtn').onclick = closePlayer;
-  $('dlSwingBtn').onclick = () => { if (playerSwingId) downloadSwing(playerSwingId); };
-  $('shareSwingBtn').onclick = () => { if (playerSwingId) shareSwing(playerSwingId); };
-  $('delSwingBtn').onclick = async () => {
-    if (!playerSwingId) return;
-    if (!confirm('Delete this swing?')) return;
-    try { await Swings.del(playerSwingId); } catch(e){ toast('Couldn\u2019t delete — storage is blocked'); return; }
-    closePlayer(); await renderSwings();
-  };
-  document.addEventListener('pagehide', stopCamera);
-}
-async function init(){
-  wireControls();
-  syncControls();
-  try { db = await openDB(); }
-  catch(e){
-    const msg = (e && (e.message || e.name)) || 'unknown error';
-    showStorageError(msg);
-    toast('Saving is blocked in this browser — see the warning up top');
-  }
-  try { await refreshChip(); } catch(e){}
-  if (window.navigator.standalone === true) showCamError('standalone');
-  showView('camera');
-}
-document.addEventListener('DOMContentLoaded', init);
 </script>
+<script type="module" src="js/app.js"></script>
 </body>
 </html>

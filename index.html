@@ -39,7 +39,12 @@ button{font-family:inherit;}
 #storageBanner{background:#3a2b12;color:#ffd88a;font-size:13px;padding:10px 14px;border-bottom:1px solid #5c4a1f;line-height:1.45;}
 #storageBanner[hidden]{display:none;}
 main{flex:1; display:flex; flex-direction:column; min-height:0; position:relative;}
-#stage{flex:1; position:relative; background:#000; min-height:0;}
+#stage{flex:1; position:relative; background:#000; min-height:0; overflow:hidden;}
+#zoomBtn{
+  position:absolute; bottom:12px; left:50%; transform:translateX(-50%); z-index:4;
+  background:rgba(0,0,0,.55); color:#fff; border:1px solid var(--line);
+  border-radius:999px; padding:8px 18px; font-size:14px; font-weight:700;
+}
 #liveView{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#000;}
 #delayStage{position:absolute; inset:0; display:none;}
 #delayStage.on{display:block;}
@@ -164,6 +169,7 @@ section.page[hidden]{display:none;}
     </div>
     <div id="recDot" hidden><i></i>REC</div>
     <div id="camMode" hidden></div>
+    <button id="zoomBtn" type="button">1×</button>
     <div id="warmup" class="overlay" hidden><div class="warmup-inner"><span class="dot"></span>BUFFERING…</div></div>
     <div id="startOverlay" class="overlay">
       <button id="startBtn" type="button">Start Camera</button>
@@ -222,7 +228,7 @@ section.page[hidden]{display:none;}
       <select id="newBats"><option value="R">R</option><option value="L">L</option><option value="S">S</option></select>
       <button id="addProfileBtn" type="button">Add</button>
     </div>
-    <div class="verfoot">Swing Delay v7</div>
+    <div class="verfoot">Swing Delay v8</div>
   </div>
 </section>
 
@@ -274,7 +280,7 @@ function safeName(s){ return ((s || 'hitter').replace(/[^\w\-]+/g,'').slice(0,24
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 /* ================= prefs ================= */
-const DEFAULT_PREFS = { delay:8, mode:'delay', saveLen:10, facing:'user', flip:{user:false,environment:false}, profileId:null, autoClip:true, sens:'med', quality:'med' };
+const DEFAULT_PREFS = { delay:8, mode:'delay', saveLen:10, facing:'user', flip:{user:false,environment:false}, profileId:null, autoClip:true, sens:'med', quality:'med', zoom:1 };
 let prefs = Object.assign({}, DEFAULT_PREFS);
 try {
   const raw = localStorage.getItem('swingdelay-prefs');
@@ -355,11 +361,12 @@ function viewSize(vw, vh){
 function makeRec(){ return { canvas: document.createElement('canvas'), recorder: null, chunks: [], initChunk: null, mime: '', ext: 'mp4' }; }
 const viewR = makeRec(), clipR = makeRec();
 
-/* Draw the camera frame corrected for the mirror setting (true orientation by default). */
-function drawCorrected(ctx, w, h, flip){
+/* Draw the camera frame corrected for the mirror setting (true orientation by default).
+   zoom > 1 crops into the center, which cuts the front camera's wide-angle warp. */
+function drawCorrected(ctx, w, h, flip, zoom){
   const vw = src.videoWidth, vh = src.videoHeight;
   if (!vw || !vh || src.readyState < 2) return false;
-  const s = Math.max(w/vw, h/vh), dw = vw*s, dh = vh*s;
+  const s = Math.max(w/vw, h/vh) * (zoom || 1), dw = vw*s, dh = vh*s;
   const dx = (w-dw)/2, dy = (h-dh)/2;
   ctx.save();
   if (flip){ ctx.translate(w, 0); ctx.scale(-1, 1); }
@@ -701,14 +708,15 @@ function recLoop(){
   if (now - recLastT < loopMs) return;
   recLastT = now;
   const flip = flipOn();
+  const z = prefs.zoom || 1;
   const vw = src.videoWidth, vh = src.videoHeight;
   if (vw && vh){
     const cc = clipR.canvas;
-    drawCorrected(cc.getContext('2d'), cc.width, cc.height, flip);
+    drawCorrected(cc.getContext('2d'), cc.width, cc.height, flip, z);
     if ((viewTick++ % 2) === 0){
       const vc = viewR.canvas, vsz = viewSize(vw, vh);
       if (vc.width !== vsz[0] || vc.height !== vsz[1]){ vc.width = vsz[0]; vc.height = vsz[1]; }
-      drawCorrected(vc.getContext('2d'), vsz[0], vsz[1], flip);
+      drawCorrected(vc.getContext('2d'), vsz[0], vsz[1], flip, z);
     }
   }
 }
@@ -864,7 +872,9 @@ function syncControls(){
   $('camSwitch').textContent = prefs.facing === 'user' ? '🤳 Front' : '📷 Back';
   $('mirrorBtn').textContent = '🪞 Mirror: ' + (flipOn() ? 'On' : 'Off');
   $('mirrorBtn').classList.toggle('on', flipOn());
-  $('liveView').style.transform = flipOn() ? 'scaleX(-1)' : 'none';
+  const z = prefs.zoom || 1;
+  $('liveView').style.transform = ((flipOn() ? 'scaleX(-1) ' : '') + (z !== 1 ? 'scale(' + z + ')' : '')).trim() || 'none';
+  $('zoomBtn').textContent = (z === 1 ? '1×' : z.toFixed(1) + '×');
   $('saveLenBtn').textContent = '⏱ ' + prefs.saveLen + 's';
   $('saveBtn').textContent = '● SAVE LAST ' + prefs.saveLen + 's';
   $('autoClipBtn').textContent = '✂️ Auto-clip: ' + (prefs.autoClip ? 'On' : 'Off');
@@ -894,6 +904,13 @@ function wireControls(){
     prefs.flip[prefs.facing] = !flipOn();
     savePrefs(); syncControls();
     toast(flipOn() ? 'Mirror on — image flipped' : 'Mirror off — true orientation');
+  };
+  $('zoomBtn').onclick = () => {
+    const levels = [1, 1.3, 1.6, 2];
+    const i = levels.indexOf(prefs.zoom);
+    prefs.zoom = levels[(i + 1) % levels.length];
+    savePrefs(); syncControls();
+    toast('Zoom ' + $('zoomBtn').textContent);
   };
   const lens = [5,10,15];
   $('saveLenBtn').onclick = () => {

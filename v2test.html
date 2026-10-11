@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
+<!-- NOTE: apple-mobile-web-app-capable is intentionally NOT set. Apple blocks
+     getUserMedia inside installed home-screen web apps on iOS, so the camera
+     only works when this page runs in Safari. The home-screen icon opens in Safari. -->
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="theme-color" content="#0a0a0f"/>
+<title>SwingDelay</title>
+<link rel="manifest" href="manifest.webmanifest"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23e5484d'/%3E%3Ctext x='50' y='66' font-size='44' font-family='Arial' font-weight='bold' fill='white' text-anchor='middle'%3ESD%3C/text%3E%3C/svg%3E"/>
+<link rel="apple-touch-icon" href="icon-180.png"/>
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+<div id="app">
+
+  <!-- SETUP: shown when Supabase is not configured -->
+  <section id="screen-setup" class="screen" hidden>
+    <div class="wrap narrow">
+      <h1 class="logo">SWING<span>DELAY</span></h1>
+      <h2>One-time setup</h2>
+      <p class="dim">SwingDelay stores accounts and videos in the cloud (Supabase). Paste your project keys once — they're saved on this device.</p>
+      <ol class="steps">
+        <li>Create a free project at <b>supabase.com</b>.</li>
+        <li>In the SQL editor, run <b>supabase/schema.sql</b> from the app repo.</li>
+        <li>Copy your <b>Project URL</b> and <b>anon key</b> (Project Settings → API) below.</li>
+      </ol>
+      <label class="field"><span>Project URL</span><input id="setupUrl" type="url" placeholder="https://xyz.supabase.co" autocomplete="off"/></label>
+      <label class="field"><span>Anon key</span><input id="setupKey" type="text" placeholder="eyJ..." autocomplete="off"/></label>
+      <button id="setupSave" class="btn primary big">Save &amp; continue</button>
+    </div>
+  </section>
+
+  <!-- AUTH -->
+  <section id="screen-auth" class="screen" hidden>
+    <div class="wrap narrow">
+      <h1 class="logo">SWING<span>DELAY</span></h1>
+      <div class="seg" id="authTabs">
+        <button type="button" data-tab="login" class="on">Log in</button>
+        <button type="button" data-tab="signup">Sign up</button>
+      </div>
+      <div id="authLogin">
+        <label class="field"><span>Email</span><input id="loginEmail" type="email" autocomplete="email"/></label>
+        <label class="field"><span>Password</span><input id="loginPass" type="password" autocomplete="current-password"/></label>
+        <button id="loginBtn" class="btn primary big">Log in</button>
+      </div>
+      <div id="authSignup" hidden>
+        <label class="field"><span>Your name</span><input id="suName" type="text" autocomplete="name"/></label>
+        <label class="field"><span>Email</span><input id="suEmail" type="email" autocomplete="email"/></label>
+        <label class="field"><span>Password</span><input id="suPass" type="password" autocomplete="new-password"/></label>
+        <label class="field"><span>I am a…</span>
+          <select id="suRole"><option value="coach">Coach</option><option value="hitter">Hitter</option></select>
+        </label>
+        <label class="field" id="inviteWrap" hidden><span>Invite code (from your coach)</span><input id="suCode" type="text" placeholder="SD-XXXXXX" autocomplete="off"/></label>
+        <button id="signupBtn" class="btn primary big">Create account</button>
+      </div>
+      <p id="authErr" class="err" hidden></p>
+    </div>
+  </section>
+
+  <!-- ROSTER (coach) -->
+  <section id="screen-roster" class="screen" hidden>
+    <header class="topbar"><h1 class="logo sm">SWING<span>DELAY</span></h1><button id="rosterSignout" class="btn ghost sm">Sign out</button></header>
+    <div class="wrap">
+      <div class="rowhead"><h2>Roster</h2><button id="addHitterBtn" class="btn primary sm">+ Add hitter</button></div>
+      <div id="hitterForm" class="card form" hidden>
+        <label class="field"><span>Name</span><input id="nhName" type="text" placeholder="Hitter name" maxlength="40"/></label>
+        <label class="field"><span>Bats</span><select id="nhBats"><option value="R">R</option><option value="L">L</option><option value="S">S</option></select></label>
+        <button id="nhSave" class="btn primary">Create hitter</button>
+      </div>
+      <div id="inviteCard" class="card invite" hidden>
+        <div><b id="inviteName"></b> — share this invite code:</div>
+        <div class="code" id="inviteCode"></div>
+        <button id="inviteCopy" class="btn sm">Copy code</button>
+        <button id="inviteDone" class="btn ghost sm">Done</button>
+      </div>
+      <div id="rosterList"></div>
+    </div>
+  </section>
+
+  <!-- CAMERA -->
+  <section id="screen-camera" class="screen" hidden>
+    <header class="topbar">
+      <button id="camBack" class="btn ghost sm">←</button>
+      <button id="camHitterChip" class="chip">Pick hitter ▾</button>
+    </header>
+    <div id="stage">
+      <video id="liveView" muted playsinline style="display:none"></video>
+      <div id="delayStage" style="display:none">
+        <video id="dpA" muted playsinline preload="auto"></video>
+        <video id="dpB" muted playsinline preload="auto"></video>
+      </div>
+      <div id="recDot" hidden><i></i>REC</div>
+      <div id="camMode" hidden></div>
+      <div id="warmup" class="overlay" hidden><div class="warmup-inner"><span class="dot"></span>BUFFERING…</div></div>
+      <div id="poseBadge" hidden>POSE</div>
+      <div id="startOverlay" class="overlay">
+        <button id="startBtn" class="btn primary big">Start Camera</button>
+        <p class="dim">Point the phone at the hitter. The screen replays each swing on a delay.</p>
+        <div id="camError" hidden class="errbox"><b>Camera unavailable</b><p id="camErrorText"></p></div>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="crow"><span class="clabel">Delay</span><input id="delayRange" type="range" min="1" max="30" step="1" value="5"/><span id="delayVal">5s</span></div>
+      <div class="crow">
+        <div class="seg" style="flex:1"><button id="modeDelay" type="button" class="on">Delay</button><button id="modeLive" type="button">Live</button></div>
+        <button id="camSwitch" class="tbtn">🤳 Front</button>
+      </div>
+      <div class="crow">
+        <button id="saveClipBtn" class="btn primary big" style="flex:1">● SAVE CLIP</button>
+      </div>
+      <div class="crow">
+        <button id="autoClipBtn" class="tbtn on" style="flex:1">✂️ Auto-clip: On</button>
+        <button id="sensBtn" class="tbtn">Sensitivity: Med</button>
+      </div>
+      <p class="hint">Front camera shows true left/right — a lefty looks left-handed.</p>
+    </div>
+  </section>
+
+  <!-- LIBRARY -->
+  <section id="screen-library" class="screen" hidden>
+    <header class="topbar"><button id="libBack" class="btn ghost sm">←</button><h2 id="libTitle">Swings</h2><span></span></header>
+    <div class="wrap">
+      <div class="crow filters" id="tagFilters">
+        <button class="tbtn f on" data-f="all">All</button>
+        <button class="tbtn f" data-f="Good">Good</button>
+        <button class="tbtn f" data-f="Bad">Bad</button>
+        <button class="tbtn f" data-f="Needs Work">Needs Work</button>
+        <button class="tbtn f" data-f="fav">★ Fav</button>
+      </div>
+      <div id="swingGrid" class="grid"></div>
+    </div>
+  </section>
+
+  <!-- SWING DETAIL -->
+  <section id="screen-detail" class="screen" hidden>
+    <header class="topbar"><button id="detBack" class="btn ghost sm">←</button><h2 id="detTitle">Swing</h2><button id="detFav" class="btn ghost sm">☆</button></header>
+    <div class="wrap">
+      <video id="detVideo" controls playsinline preload="metadata"></video>
+      <div class="crow">
+        <div class="seg" id="rateSeg" style="flex:1">
+          <button type="button" data-r="0.25">0.25×</button>
+          <button type="button" data-r="0.5">0.5×</button>
+          <button type="button" data-r="1" class="on">1×</button>
+        </div>
+        <button id="frameBack" class="tbtn">⏮</button>
+        <button id="frameFwd" class="tbtn">⏭</button>
+      </div>
+      <div class="crow"><input id="scrub" type="range" min="0" max="1000" value="0" style="flex:1"/><span id="scrubT" class="dim sm">0.0s</span></div>
+      <h3>Tags</h3>
+      <div class="crow" id="tagRow">
+        <button class="tbtn tag" data-t="Good">Good</button>
+        <button class="tbtn tag" data-t="Bad">Bad</button>
+        <button class="tbtn tag" data-t="Needs Work">Needs Work</button>
+      </div>
+      <div class="crow">
+        <input id="customTag" type="text" placeholder="Custom tag…" maxlength="24" style="flex:1"/>
+        <button id="customTagBtn" class="tbtn">Add</button>
+      </div>
+      <div id="tagList" class="tags"></div>
+      <h3>Note</h3>
+      <textarea id="detNote" rows="2" placeholder="Add a note…"></textarea>
+      <button id="noteSave" class="btn sm">Save note</button>
+      <div class="crow" style="margin-top:14px">
+        <button id="detDownload" class="tbtn" style="flex:1">⤓ Download</button>
+        <button id="detShare" class="tbtn" style="flex:1">↗ Share</button>
+        <button id="detDelete" class="tbtn danger" style="flex:1">Delete</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="toast"></div>
+  <video id="src" muted playsinline style="display:none"></video>
+</div>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+</script>
+<script type="module" src="js/app.js"></script>
+<script>
+window.__errs=[];
+window.addEventListener('error',e=>window.__errs.push('err: '+String((e&&e.message)||e)));
+window.addEventListener('unhandledrejection',e=>window.__errs.push('rej: '+String((e&&e.reason&&(e.reason.message||e.reason))||e)));
+</script>
+</body>
+</html>

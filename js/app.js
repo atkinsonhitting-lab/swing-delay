@@ -46,6 +46,17 @@ function wireSetup(){
     db.saveCreds(u, k);
     location.reload();
   };
+  $("copySqlBtn").onclick = async () => {
+    try {
+      const r = await fetch("supabase/schema.sql", { cache: "no-store" });
+      if (!r.ok) throw new Error("fetch failed");
+      const sql = await r.text();
+      await navigator.clipboard.writeText(sql);
+      toast("SQL copied — paste it in the Supabase SQL editor and run it");
+    } catch(e){
+      toast("Copy failed — open supabase/schema.sql in the repo instead");
+    }
+  };
 }
 
 async function route(session){

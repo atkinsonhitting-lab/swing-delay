@@ -20,7 +20,7 @@ function pickMime(){
 export const cam = {
   stream: null, ready: false, starting: false,
   facing: "user",
-  delay: 5, autoClip: true, sens: "med",
+  delay: 5, autoClip: true, sens: "med", zoom: 1,
   hitter: null,           // {id, name}
   onClip: null, onToast: null,
 
@@ -46,6 +46,10 @@ export const cam = {
     mc.width = 48; mc.height = 27;
     this.motionCtx = mc.getContext("2d", { willReadFrequently: true });
     this._mc = mc;
+    try {
+      const z = parseFloat(localStorage.getItem("sd-zoom"));
+      if ([1, 1.3, 1.6, 2].indexOf(z) >= 0) this.zoom = z;
+    } catch(e){}
     this.wire();
     this.sync();
   },
@@ -73,6 +77,15 @@ export const cam = {
       this.sens = order[(order.indexOf(this.sens) + 1) % order.length];
       this.sync(); this.resetDetect();
     };
+    $("zoomBtn").onclick = () => {
+      const levels = [1, 1.3, 1.6, 2];
+      const i = levels.indexOf(this.zoom);
+      this.zoom = levels[(i + 1) % levels.length];
+      try { localStorage.setItem("sd-zoom", String(this.zoom)); } catch(e){}
+      this.sync();
+      const zl = this.zoom % 1 === 0 ? this.zoom + "×" : this.zoom.toFixed(1) + "×";
+      this.toast("Zoom " + zl);
+    };
     $("startBtn").onclick = () => this.start();
     this.dpA.addEventListener("ended", () => this.dpOnEnded("A"));
     this.dpB.addEventListener("ended", () => this.dpOnEnded("B"));
@@ -87,6 +100,9 @@ export const cam = {
     $("autoClipBtn").textContent = "✂️ Auto-clip: " + (this.autoClip ? "On" : "Off");
     $("autoClipBtn").classList.toggle("on", this.autoClip);
     $("sensBtn").textContent = "Sensitivity: " + SENS[this.sens].label;
+    const z = this.zoom || 1;
+    $("zoomBtn").textContent = z % 1 === 0 ? z + "×" : z.toFixed(1) + "×";
+    if (this.liveView) this.liveView.style.transform = z !== 1 ? "scale(" + z + ")" : "none";
     this.updateStage();
   },
   setMode(m){ this.mode = m; this.sync(); },
@@ -215,7 +231,7 @@ export const cam = {
     const cw = this.rec.canvas.width, ch = this.rec.canvas.height;
     const vw = this.src.videoWidth, vh = this.src.videoHeight;
     if (!vw || !vh) return;
-    const s = Math.max(cw / vw, ch / vh), dw = vw * s, dh = vh * s;
+    const s = Math.max(cw / vw, ch / vh) * (this.zoom || 1), dw = vw * s, dh = vh * s;
     ctx.drawImage(this.src, (cw - dw) / 2, (ch - dh) / 2, dw, dh); // true orientation, never mirrored
   },
 

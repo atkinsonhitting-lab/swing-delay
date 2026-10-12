@@ -25,9 +25,10 @@
       <p class="dim">SwingDelay stores accounts and videos in the cloud (Supabase). Paste your project keys once — they're saved on this device.</p>
       <ol class="steps">
         <li>Create a free project at <b>supabase.com</b>.</li>
-        <li>In the SQL editor, run <b>supabase/schema.sql</b> from the app repo.</li>
+        <li>Tap the button below to copy the database SQL, then paste it into your project's <b>SQL Editor</b> and run it.</li>
         <li>Copy your <b>Project URL</b> and <b>anon key</b> (Project Settings → API) below.</li>
       </ol>
+      <button id="copySqlBtn" class="btn sm">⧉ Copy database SQL</button>
       <label class="field"><span>Project URL</span><input id="setupUrl" type="url" placeholder="https://xyz.supabase.co" autocomplete="off"/></label>
       <label class="field"><span>Anon key</span><input id="setupKey" type="text" placeholder="eyJ..." autocomplete="off"/></label>
       <button id="setupSave" class="btn primary big">Save &amp; continue</button>
@@ -115,6 +116,7 @@
       <div class="crow">
         <button id="autoClipBtn" class="tbtn on" style="flex:1">✂️ Auto-clip: On</button>
         <button id="sensBtn" class="tbtn">Sensitivity: Med</button>
+        <button id="zoomBtn" class="tbtn">1×</button>
       </div>
       <p class="hint">Front camera shows true left/right — a lefty looks left-handed.</p>
     </div>
